@@ -1,6 +1,13 @@
 import { Scheduler, Task, Server, SchedulingDecision } from '../domain/types';
 
-
+/**
+ * Best-Fit: for each pending task, among all servers with enough free
+ * capacity, pick the one that leaves the SMALLEST leftover capacity after
+ * placement (i.e. the tightest fit). "Leftover" is defined once here as
+ * (cpuLeft - cpuRequired) + (memLeft - memRequired) after hypothetical
+ * placement — the same definition the AI policy's "leftover" feature uses,
+ * so both are directly comparable.
+ */
 export class BestFitScheduler implements Scheduler {
   readonly name = 'best-fit';
 

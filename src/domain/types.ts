@@ -36,7 +36,19 @@ export interface SchedulingDecision {
   serverId: string | null;
 }
 
-
+/**
+ * The one contract every scheduler — baseline or AI — must implement.
+ * The simulation engine only ever talks to this interface, never to a
+ * concrete scheduler type. This is what makes the comparison fair: swapping
+ * First-Fit for the AI scheduler changes zero lines of engine or metrics code.
+ *
+ * IMPORTANT CONTRACT RULES (enforced by the engine, not by convention):
+ *  - `pendingTasks` and `servers` passed in only ever reflect the CURRENT
+ *    tick's visible state. No scheduler ever sees tasks that haven't arrived.
+ *  - Returned decisions are advisory. The engine independently re-validates
+ *    every decision against live server capacity before committing it.
+ *    A scheduler cannot force an invalid placement.
+ */
 export interface Scheduler {
   readonly name: string;
   schedule(

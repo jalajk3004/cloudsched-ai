@@ -1,6 +1,14 @@
 import { Scheduler, Task, Server, SchedulingDecision, fits } from '../domain/types';
 
-
+/**
+ * First-Fit: for each pending task (in arrival order), scan servers in
+ * list order and assign to the first one with enough free CPU and memory.
+ *
+ * Note: this scheduler simulates placement locally as it walks the task
+ * list within a single tick, so two tasks in the same tick don't both get
+ * assigned to a server that only has room for one of them. The engine
+ * re-validates against the REAL server state afterward regardless.
+ */
 export class FirstFitScheduler implements Scheduler {
   readonly name = 'first-fit';
 

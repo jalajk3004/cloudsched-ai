@@ -1,6 +1,12 @@
 import { Scheduler, Task, Server, SchedulingDecision } from '../domain/types';
 
-
+/**
+ * Round-Robin: keeps a rotating pointer across servers (persists across
+ * ticks, since RR is inherently stateful — a fresh instance must be created
+ * per run so state doesn't leak between experiments). For each pending
+ * task, scans forward from the pointer for the next server with enough
+ * capacity, assigns, and advances the pointer past it.
+ */
 export class RoundRobinScheduler implements Scheduler {
   readonly name = 'round-robin';
   private pointer = 0;
