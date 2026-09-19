@@ -31,7 +31,7 @@ you need to touch for your part of the AI scheduler.
 |---|---|---|
 | Member 1 | `src/ai-scheduler/providers/groq-provider.ts` | Groq (e.g. Llama 3.3 via Groq API) |
 | Member 2 | `src/ai-scheduler/providers/gemini-provider.ts` | Google Gemini |
-| Member 3 | `src/ai-scheduler/providers/claude-provider.ts` | Anthropic Claude |
+| Member 3 | `src/ai-scheduler/providers/huggingface-provider.ts` | A free model hosted on Hugging Face (e.g. Qwen3 - exact model still being decided) |
 
 Each provider file already has a `TODO` comment at the top with the
 exact steps to follow. The only job of your file is: **take the
@@ -47,7 +47,7 @@ You do not need anyone else's provider finished to test your own. Run:
 ```bash
 npx ts-node src/experiment/run-ai-search-cli.ts groq      # Member 1
 npx ts-node src/experiment/run-ai-search-cli.ts gemini    # Member 2
-npx ts-node src/experiment/run-ai-search-cli.ts claude    # Member 3
+npx ts-node src/experiment/run-ai-search-cli.ts huggingface # Member 3
 ```
 
 (This CLI script is provided — see `src/experiment/run-ai-search-cli.ts`.)
@@ -62,7 +62,7 @@ npx ts-node src/experiment/run-ai-search-cli.ts claude    # Member 3
   the same "one shared interface, pluggable implementations" pattern
   already used for First-Fit / Best-Fit / Round-Robin.
 - As a side effect, once all three are done, the project can directly
-  compare Groq vs. Gemini vs. Claude as AI schedulers, not just
+  compare Groq vs. Gemini vs. a free Hugging Face model as AI schedulers, not just
   "AI vs. classical" — a natural extension noted in the methodology
   document's "What We Could Improve Later" section.
 

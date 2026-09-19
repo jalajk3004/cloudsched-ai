@@ -9,7 +9,7 @@ export async function buildFixtureDb(path: string): Promise<void> {
   const db = new SQL.Database();
 
   db.run(`
-    CREATE TABLE "VM Requests" (
+    CREATE TABLE "vm" (
       vmId INTEGER,
       tenantId INTEGER,
       vmTypeId INTEGER,
@@ -17,7 +17,7 @@ export async function buildFixtureDb(path: string): Promise<void> {
       starttime REAL,
       endtime REAL
     );
-    CREATE TABLE "VM Types" (
+    CREATE TABLE "vmType" (
       id INTEGER,
       vmTypeId INTEGER,
       machineId INTEGER,
@@ -29,13 +29,13 @@ export async function buildFixtureDb(path: string): Promise<void> {
     );
   `);
 
-  const insertType = db.prepare(`INSERT INTO "VM Types" (id, vmTypeId, machineId, core, memory, hdd, ssd, nic) VALUES (?,?,?,?,?,?,?,?)`);
+  const insertType = db.prepare(`INSERT INTO "vmType" (id, vmTypeId, machineId, core, memory, hdd, ssd, nic) VALUES (?,?,?,?,?,?,?,?)`);
   insertType.run([1, 100, 1, 0.5, 0.25, 0, 0, 0]);   // half-CPU, quarter-mem type
   insertType.run([2, 101, 1, 0.125, 0.5, 0, 0, 0]);  // small-CPU, half-mem type
   insertType.run([3, 102, 1, 1.0, 1.0, 0, 0, 0]);    // full machine type
   insertType.free();
 
-  const insertReq = db.prepare(`INSERT INTO "VM Requests" (vmId, tenantId, vmTypeId, priority, starttime, endtime) VALUES (?,?,?,?,?,?)`);
+  const insertReq = db.prepare(`INSERT INTO "vm" (vmId, tenantId, vmTypeId, priority, starttime, endtime) VALUES (?,?,?,?,?,?)`);
   insertReq.run([1, 1, 100, 0, 0.0, 0.5]);    // valid, high priority
   insertReq.run([2, 1, 101, 1, 0.2, 1.2]);    // valid, low priority
   insertReq.run([3, 2, 102, 0, 1.0, 3.0]);    // valid, high priority, full machine

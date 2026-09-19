@@ -2,6 +2,10 @@ import { FirstFitScheduler } from '../schedulers/first-fit';
 import { BestFitScheduler } from '../schedulers/best-fit';
 import { RoundRobinScheduler } from '../schedulers/round-robin';
 import { runExperiment, ExperimentConfig, SchedulerFactory } from './experiment-runner';
+import { generateWorkload } from '../workload/generator';
+import { recordWorkloadRun } from '../persistence/workload-store';
+
+const DB_PATH = process.env.WORKLOAD_DB_PATH || 'data/workload-history.sqlite';
 
 const config: ExperimentConfig = {
   servers: [
@@ -29,27 +33,41 @@ const schedulers: SchedulerFactory[] = [
   { name: 'round-robin', create: () => new RoundRobinScheduler() },
 ];
 
-const result = runExperiment(config, schedulers);
+async function main() {
+  const result = runExperiment(config, schedulers);
 
-console.log(`\nScenario: ${config.workload.scenario} | Repeats: ${config.repeats}\n`);
-console.log(
-  ['Scheduler', 'CPU%', 'Mem%', 'WastedCPU', 'WastedMem', 'Scheduled', 'Rejected', 'AvgWait', 'AvgTurnaround', 'Score']
-    .map(h => h.padEnd(12)).join(''),
-);
-for (const [name, m] of Object.entries(result.perSchedulerAvg)) {
+  // Record the exact base-seed workload used for this scenario, so there
+  // is always a maintained record of what data the schedulers were
+  // tested against (the actual experiment internally uses `repeats`
+  // seeded variants of this - config_json below records that too).
+  const representativeWorkload = generateWorkload(config.workload);
+  const runId = await recordWorkloadRun(DB_PATH, 'synthetic', config.workload.scenario, representativeWorkload, config);
+
+  console.log(`\nScenario: ${config.workload.scenario} | Repeats: ${config.repeats} | Recorded as workload run #${runId}\n`);
   console.log(
-    [
-      name,
-      m.cpuUtilizationPct.toFixed(1),
-      m.memUtilizationPct.toFixed(1),
-      m.wastedCpu.toFixed(0),
-      m.wastedMem.toFixed(0),
-      m.successfullyScheduled.toFixed(1),
-      m.rejected.toFixed(1),
-      m.avgWaitingTime.toFixed(2),
-      m.avgTurnaroundTime.toFixed(2),
-      result.overallScores[name].toFixed(3),
-    ].map(v => String(v).padEnd(12)).join(''),
+    ['Scheduler', 'CPU%', 'Mem%', 'WastedCPU', 'WastedMem', 'Scheduled', 'Rejected', 'AvgWait', 'AvgTurnaround', 'Score']
+      .map(h => h.padEnd(12)).join(''),
   );
+  for (const [name, m] of Object.entries(result.perSchedulerAvg)) {
+    console.log(
+      [
+        name,
+        m.cpuUtilizationPct.toFixed(1),
+        m.memUtilizationPct.toFixed(1),
+        m.wastedCpu.toFixed(0),
+        m.wastedMem.toFixed(0),
+        m.successfullyScheduled.toFixed(1),
+        m.rejected.toFixed(1),
+        m.avgWaitingTime.toFixed(2),
+        m.avgTurnaroundTime.toFixed(2),
+        result.overallScores[name].toFixed(3),
+      ].map(v => String(v).padEnd(12)).join(''),
+    );
+  }
+  console.log('');
 }
-console.log('');
+
+main().catch(err => {
+  console.error('Failed to run:', err.message);
+  process.exit(1);
+});

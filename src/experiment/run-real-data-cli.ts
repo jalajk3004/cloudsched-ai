@@ -4,6 +4,9 @@ import { RoundRobinScheduler } from '../schedulers/round-robin';
 import { loadRealWorkload } from '../workload/real-data-adapter';
 import { runSimulation, ServerConfig } from '../engine/simulation-engine';
 import { computeMetrics, computeOverallScores } from '../metrics/metrics-engine';
+import { recordWorkloadRun } from '../persistence/workload-store';
+
+const WORKLOAD_DB_PATH = process.env.WORKLOAD_DB_PATH || 'data/workload-history.sqlite';
 
 const dbPath = process.argv[2];
 if (!dbPath) {
@@ -30,6 +33,9 @@ async function main() {
     console.error('No valid tasks were loaded. Check the file path and that it matches the expected schema.');
     process.exit(1);
   }
+
+  const runId = await recordWorkloadRun(WORKLOAD_DB_PATH, 'azure', dbPath, tasks, { dbPath, maxTasks });
+  console.log(`Recorded as workload run #${runId} in ${WORKLOAD_DB_PATH}\n`);
 
   const lastArrival = Math.max(...tasks.map(t => t.arrivalTime + t.duration));
   const schedulers = [

@@ -55,7 +55,7 @@ export interface PolicyPromptContext {
  * implementation is plugged in.
  */
 export interface LLMProvider {
-  /** Short identifier, e.g. 'groq', 'gemini', 'claude'. Used only for
+  /** Short identifier, e.g. 'groq', 'gemini', 'huggingface'. Used only for
    *  logging which member's model produced a given policy. */
   readonly name: string;
 

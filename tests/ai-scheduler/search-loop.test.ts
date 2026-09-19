@@ -64,9 +64,20 @@ describe('runSearchLoop (using a mock provider - no real LLM needed)', () => {
     expect(result.log[0].schemaRejectReason).toMatch(/Provider threw/);
   });
 
-  it('the stub providers (Groq/Gemini/Claude) throw a clear not-implemented error', async () => {
+  it('the Groq provider throws a clear error when no API key is configured', async () => {
     const { GroqProvider } = require('../../src/ai-scheduler/providers/groq-provider');
-    const provider = new GroqProvider();
+    expect(() => new GroqProvider()).toThrow(/No API key found/);
+  });
+
+  it('the still-stubbed providers (Gemini/HuggingFace) throw a clear not-implemented error', async () => {
+    const { GeminiProvider } = require('../../src/ai-scheduler/providers/gemini-provider');
+    const provider = new GeminiProvider();
+    await expect(provider.proposePolicy({} as PolicyPromptContext)).rejects.toThrow(/Not implemented yet/);
+  });
+
+  it('the Hugging Face provider stub also throws a clear not-implemented error', async () => {
+    const { HuggingFaceProvider } = require('../../src/ai-scheduler/providers/huggingface-provider');
+    const provider = new HuggingFaceProvider();
     await expect(provider.proposePolicy({} as PolicyPromptContext)).rejects.toThrow(/Not implemented yet/);
   });
 });

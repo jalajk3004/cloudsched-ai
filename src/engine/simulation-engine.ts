@@ -47,14 +47,41 @@ export function runSimulation(
   }));
 
   // Deep-copy tasks so repeated runs (different schedulers) never share mutable state.
+  // Deep-copy tasks so repeated runs (different schedulers) never share mutable state.
   const tasks: Task[] = taskQueue.map(t => ({ ...t, status: 'pending' as const }));
   const taskById = new Map(tasks.map(t => [t.id, t]));
+
+  // Bucket tasks by arrival tick ONCE up front, instead of scanning the
+  // entire task list on every single tick. For a large task list run
+  // over a wide tick range, the old approach (O(tasks) work per tick)
+  // could balloon into billions of operations - this makes it O(tasks)
+  // total, regardless of how many ticks the simulation runs for.
+  const tasksByArrivalTick = new Map<number, Task[]>();
+  for (const task of tasks) {
+    const bucket = tasksByArrivalTick.get(task.arrivalTime);
+    if (bucket) bucket.push(task);
+    else tasksByArrivalTick.set(task.arrivalTime, [task]);
+  }
 
   let pendingIds = new Set<string>(); // tasks currently visible & unplaced
   const history: TickSnapshot[] = [];
 
   const lastArrival = Math.max(0, ...tasks.map(t => t.arrivalTime));
   const maxTick = Math.max(simulationDuration, lastArrival + 1);
+
+  // Safety guard: a bad unit-conversion assumption upstream (e.g. treating
+  // a raw dataset's time column as the wrong unit) can turn into an
+  // astronomical tick count, which would otherwise silently try to
+  // allocate a history entry per tick until the process runs out of
+  // memory. Fail fast with a clear message instead.
+  const MAX_REASONABLE_TICKS = 200_000;
+  if (maxTick > MAX_REASONABLE_TICKS) {
+    throw new Error(
+      `Simulation would run for ${maxTick} ticks, which exceeds the safety limit of ${MAX_REASONABLE_TICKS}. ` +
+      `This usually means a task's arrivalTime is far larger than expected - check the time-unit conversion ` +
+      `in whichever workload source produced these tasks (e.g. ticksPerSecond/ticksPerDay in the data adapter).`,
+    );
+  }
 
   for (let t = 0; t < maxTick; t++) {
     // 1) free resources from tasks finishing at this tick
@@ -74,8 +101,11 @@ export function runSimulation(
     }
 
     // 2) reveal newly-arrived tasks (fairness guard: never reveal the future)
-    for (const task of tasks) {
-      if (task.arrivalTime === t && task.status === 'pending') pendingIds.add(task.id);
+    const arrivingNow = tasksByArrivalTick.get(t);
+    if (arrivingNow) {
+      for (const task of arrivingNow) {
+        if (task.status === 'pending') pendingIds.add(task.id);
+      }
     }
 
     const pendingTasks = [...pendingIds].map(id => taskById.get(id)!);

@@ -1,6 +1,6 @@
 import { GroqProvider } from '../ai-scheduler/providers/groq-provider';
 import { GeminiProvider } from '../ai-scheduler/providers/gemini-provider';
-import { ClaudeProvider } from '../ai-scheduler/providers/claude-provider';
+import { HuggingFaceProvider } from '../ai-scheduler/providers/huggingface-provider';
 import { LLMProvider } from '../ai-scheduler/llm-provider';
 import { runSearchLoop } from '../ai-scheduler/search-loop';
 import { generateWorkload } from '../workload/generator';
@@ -8,14 +8,14 @@ import { ServerConfig } from '../engine/simulation-engine';
 
 const providerName = process.argv[2];
 if (!providerName) {
-  console.error('Usage: ts-node run-ai-search-cli.ts <groq|gemini|claude> [scenario]');
+  console.error('Usage: ts-node run-ai-search-cli.ts <groq|gemini|huggingface> [scenario]');
   process.exit(1);
 }
 
 const providers: Record<string, () => LLMProvider> = {
   groq: () => new GroqProvider(process.env.GROQ_API_KEY),
   gemini: () => new GeminiProvider(process.env.GEMINI_API_KEY),
-  claude: () => new ClaudeProvider(process.env.ANTHROPIC_API_KEY),
+  huggingface: () => new HuggingFaceProvider(process.env.HUGGINGFACE_API_KEY),
 };
 
 if (!providers[providerName]) {
@@ -24,7 +24,6 @@ if (!providers[providerName]) {
 }
 
 const scenario = (process.argv[3] as any) || 'mixed';
-const provider = providers[providerName]();
 
 const sampleServers: ServerConfig[] = [
   { id: 's1', cpuCapacity: 16, memCapacity: 32768 },
@@ -45,6 +44,15 @@ const sampleTasks = generateWorkload({
 });
 
 async function main() {
+  let provider: LLMProvider;
+  try {
+    provider = providers[providerName]();
+  } catch (err) {
+    console.error(`\nCould not start the ${providerName} provider:\n  ${(err as Error).message}\n`);
+    console.error('Check your .env file has the right API key set, then try again.');
+    process.exit(1);
+  }
+
   console.log(`Running AI search loop | provider=${providerName} | scenario=${scenario} | sample size=${sampleTasks.length}\n`);
 
   const result = await runSearchLoop(provider, scenario, sampleServers, sampleTasks, 50, 5);

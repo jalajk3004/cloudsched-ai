@@ -22,10 +22,11 @@ const DEFAULTS = {
  * our Task[] format. This is Option A (real historical data), used
  * alongside Option B (synthetic generator.ts) - never as a replacement.
  *
- * Schema reference (from Azure/AzurePublicDataset's
- * AzureTracesForPacking2020.md):
- *   VM Requests: vmId, tenantId, vmTypeId, priority, starttime, endtime
- *   VM Types:    id, vmTypeId, machineId, core, memory, hdd, ssd, nic
+ * Schema reference (confirmed against the actual downloaded file - the
+ * documentation calls these tables "VM Requests"/"VM Types", but the real
+ * file uses shorter names):
+ *   vm:     vmId, tenantId, vmTypeId, priority, starttime, endtime
+ *   vmType: id, vmTypeId, machineId, core, memory, hdd, ssd, nic
  *
  * Real-world quirks this function deliberately handles:
  *  - `starttime` can be NEGATIVE (a VM that was already running before
@@ -49,8 +50,8 @@ export async function loadRealWorkload(config: RealDataConfig): Promise<Task[]> 
     const stmt = db.prepare(`
       SELECT r.vmId as vmId, r.priority as priority, r.starttime as starttime, r.endtime as endtime,
              t.core as core, t.memory as memory
-      FROM "VM Requests" r
-      JOIN "VM Types" t ON r.vmTypeId = t.vmTypeId
+      FROM "vm" r
+      JOIN "vmType" t ON r.vmTypeId = t.vmTypeId
       WHERE r.starttime >= 0 AND r.endtime IS NOT NULL
       ORDER BY r.starttime ASC
       LIMIT :maxTasks

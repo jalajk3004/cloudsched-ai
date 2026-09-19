@@ -9,6 +9,7 @@
     "experiment:baseline": "ts-node src/experiment/run-baseline-cli.ts"
   },
   "dependencies": {
+    "groq-sdk": "^1.6.0",
     "seedrandom": "^3.0.5",
     "sql.js": "^1.14.2"
   },

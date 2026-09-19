@@ -4,13 +4,15 @@ import { Task, Priority } from '../domain/types';
 export interface HuaweiDataConfig {
   csvPath: string;
   maxTasks?: number;
-  ticksPerSecond?: number;   // how many simulation ticks represent 1 real second
+  ticksPerSecond?: number;   // explicit override; if omitted, auto-derived (see below)
+  targetTickSpan?: number;   // when ticksPerSecond is omitted, compress the observed
+  // time range into roughly this many simulation ticks
   memoryGbToMb?: number;     // conversion factor, normally 1024
 }
 
 const DEFAULTS = {
   maxTasks: 2000,
-  ticksPerSecond: 0.01,  // 1 tick = 100 real seconds, so a multi-day trace fits a manageable tick range
+  targetTickSpan: 1000,
   memoryGbToMb: 1024,
 };
 
@@ -42,6 +44,15 @@ interface RawEvent {
  *  - This dataset has no priority field at all, unlike Azure's - every
  *    task is given priority 2 (medium) since the source data doesn't
  *    distinguish.
+ *  - The `time` column's exact units/reference point aren't verified
+ *    against the real file (could be seconds since collection start, or
+ *    something else entirely). Rather than assume a fixed conversion
+ *    factor - which previously caused simulations to blow up to millions
+ *    of ticks once enough rows were pulled in - this function AUTO-SCALES:
+ *    it looks at the actual observed time range in the loaded sample and
+ *    compresses it into roughly `targetTickSpan` simulation ticks,
+ *    regardless of how many rows are loaded or what the raw units turn
+ *    out to be. Pass an explicit `ticksPerSecond` to override this.
  */
 export function loadHuaweiWorkload(config: HuaweiDataConfig): Task[] {
   const opts = { ...DEFAULTS, ...config };
@@ -70,26 +81,41 @@ export function loadHuaweiWorkload(config: HuaweiDataConfig): Task[] {
     else deletions.set(event.vmid, event);
   }
 
-  const tasks: Task[] = [];
+  // Collect valid (creation + matching deletion) pairs first, capped at
+  // maxTasks, BEFORE deciding the time scale - so the scale is derived
+  // from exactly the sample we're actually going to use.
+  const pairs: { vmid: string; creation: RawEvent; deletion: RawEvent }[] = [];
   for (const [vmid, creation] of creations) {
     const deletion = deletions.get(vmid);
     if (!deletion) continue; // still running at end of trace -> unknown duration, drop
     if (deletion.time <= creation.time) continue; // malformed ordering, drop defensively
-
-    const priority: Priority = 2; // dataset has no priority field
-
-    tasks.push({
-      id: `huawei-${vmid}`,
-      cpuRequired: Math.max(1, Math.round(creation.cpu)),
-      memRequired: Math.max(1, Math.round(creation.memory * opts.memoryGbToMb)),
-      duration: Math.max(1, Math.round((deletion.time - creation.time) * opts.ticksPerSecond)),
-      arrivalTime: Math.round(creation.time * opts.ticksPerSecond),
-      priority,
-      status: 'pending',
-    });
-
-    if (tasks.length >= opts.maxTasks) break;
+    pairs.push({ vmid, creation, deletion });
+    if (pairs.length >= opts.maxTasks) break;
   }
+
+  if (pairs.length === 0) return [];
+
+  // Derive (or use the caller-supplied) time scale from the OBSERVED
+  // range of this exact sample - this is what prevents a huge sample
+  // from ever producing a runaway tick count, no matter what the raw
+  // `time` units actually are.
+  const minTime = Math.min(...pairs.map(p => p.creation.time));
+  const maxTime = Math.max(...pairs.map(p => p.deletion.time));
+  const observedSpan = Math.max(1, maxTime - minTime);
+  const ticksPerSecond = opts.ticksPerSecond ?? (opts.targetTickSpan / observedSpan);
+
+  const tasks: Task[] = pairs.map(({ vmid, creation, deletion }) => ({
+    id: `huawei-${vmid}`,
+    cpuRequired: Math.max(1, Math.round(creation.cpu)),
+    memRequired: Math.max(1, Math.round(creation.memory * opts.memoryGbToMb)),
+    duration: Math.max(1, Math.round((deletion.time - creation.time) * ticksPerSecond)),
+    // offset by minTime so ticks always start near 0, regardless of
+    // whether the raw `time` values are small relative numbers or large
+    // absolute ones (e.g. Unix timestamps)
+    arrivalTime: Math.max(0, Math.round((creation.time - minTime) * ticksPerSecond)),
+    priority: 2 as Priority, // dataset has no priority field
+    status: 'pending',
+  }));
 
   return tasks.sort((a, b) => a.arrivalTime - b.arrivalTime);
 }
