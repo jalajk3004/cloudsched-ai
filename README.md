@@ -137,3 +137,8 @@ TEAM.md             who implements which LLM provider
 | `npx jest` fails right after `git pull` | run `npm install` again - a dependency probably changed |
 | A CLI script errors with a TypeScript error | run `npx tsc --noEmit -p tsconfig.json` first to see the real error clearly |
 | Real-data CLI says "No valid tasks were loaded" | the file path is wrong, or the downloaded file doesn't match the documented schema - paste the error, don't guess |
+
+# to test on each server wrokload
+```sh
+npx ts-node src/experiment/compare-server-configs.ts synthetic cpu-heavy 500
+```
