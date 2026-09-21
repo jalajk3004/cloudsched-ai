@@ -31,7 +31,7 @@ you need to touch for your part of the AI scheduler.
 |---|---|---|
 | Member 1 | `src/ai-scheduler/providers/groq-provider.ts` | Groq (e.g. Llama 3.3 via Groq API) |
 | Member 2 | `src/ai-scheduler/providers/gemini-provider.ts` | Google Gemini |
-| Member 3 | `src/ai-scheduler/providers/huggingface-provider.ts` | A free model hosted on Hugging Face (e.g. Qwen3 - exact model still being decided) |
+| Member 3 | `src/ai-scheduler/providers/qwen-provider.ts` | Qwen3 (e.g. `qwen3:4b`), run **locally via Ollama** - fully independent, no API key, no shared account with anyone else's provider |
 
 Each provider file already has a `TODO` comment at the top with the
 exact steps to follow. The only job of your file is: **take the
@@ -40,6 +40,15 @@ You do not need to (and should not) touch validation, the simulator, or
 the scoring logic — that's shared and already handles whatever your
 provider returns.
 
+**Member 3 specifically:** your provider needs no API key at all, but
+does need one-time local setup before it will work:
+1. Install Ollama from https://ollama.com
+2. Run `ollama pull qwen3:4b`
+3. Confirm it works: `ollama run qwen3:4b` (type `/bye` to exit)
+Once that's done, `qwen-provider.ts` talks to it automatically over
+`http://localhost:11434` - no `.env` changes needed unless you want a
+different model size or a non-default host.
+
 ## How to test your own provider in isolation
 
 You do not need anyone else's provider finished to test your own. Run:
@@ -47,7 +56,7 @@ You do not need anyone else's provider finished to test your own. Run:
 ```bash
 npx ts-node src/experiment/run-ai-search-cli.ts groq      # Member 1
 npx ts-node src/experiment/run-ai-search-cli.ts gemini    # Member 2
-npx ts-node src/experiment/run-ai-search-cli.ts huggingface # Member 3
+npx ts-node src/experiment/run-ai-search-cli.ts qwen      # Member 3
 ```
 
 (This CLI script is provided — see `src/experiment/run-ai-search-cli.ts`.)
@@ -62,7 +71,7 @@ npx ts-node src/experiment/run-ai-search-cli.ts huggingface # Member 3
   the same "one shared interface, pluggable implementations" pattern
   already used for First-Fit / Best-Fit / Round-Robin.
 - As a side effect, once all three are done, the project can directly
-  compare Groq vs. Gemini vs. a free Hugging Face model as AI schedulers, not just
+  compare Llama (Groq), Gemini, and a locally-run Qwen3 (Ollama) as AI schedulers, not just
   "AI vs. classical" — a natural extension noted in the methodology
   document's "What We Could Improve Later" section.
 

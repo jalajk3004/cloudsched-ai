@@ -1,6 +1,6 @@
 import { GroqProvider } from '../ai-scheduler/providers/groq-provider';
 import { GeminiProvider } from '../ai-scheduler/providers/gemini-provider';
-import { HuggingFaceProvider } from '../ai-scheduler/providers/huggingface-provider';
+import { QwenProvider } from '../ai-scheduler/providers/qwen-provider';
 import { LLMProvider } from '../ai-scheduler/llm-provider';
 import { runSearchLoop } from '../ai-scheduler/search-loop';
 import { generateWorkload } from '../workload/generator';
@@ -8,14 +8,14 @@ import { ServerConfig } from '../engine/simulation-engine';
 
 const providerName = process.argv[2];
 if (!providerName) {
-  console.error('Usage: ts-node run-ai-search-cli.ts <groq|gemini|huggingface> [scenario]');
+  console.error('Usage: ts-node run-ai-search-cli.ts <groq|gemini|qwen> [scenario]');
   process.exit(1);
 }
 
 const providers: Record<string, () => LLMProvider> = {
   groq: () => new GroqProvider(process.env.GROQ_API_KEY),
   gemini: () => new GeminiProvider(process.env.GEMINI_API_KEY),
-  huggingface: () => new HuggingFaceProvider(process.env.HUGGINGFACE_API_KEY),
+  qwen: () => new QwenProvider(process.env.OLLAMA_HOST, process.env.OLLAMA_MODEL), // fully independent - runs locally via Ollama, no API key
 };
 
 if (!providers[providerName]) {

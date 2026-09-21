@@ -69,15 +69,14 @@ describe('runSearchLoop (using a mock provider - no real LLM needed)', () => {
     expect(() => new GroqProvider()).toThrow(/No API key found/);
   });
 
-  it('the still-stubbed providers (Gemini/HuggingFace) throw a clear not-implemented error', async () => {
+  it('the still-stubbed Gemini provider throws a clear not-implemented error', async () => {
     const { GeminiProvider } = require('../../src/ai-scheduler/providers/gemini-provider');
     const provider = new GeminiProvider();
     await expect(provider.proposePolicy({} as PolicyPromptContext)).rejects.toThrow(/Not implemented yet/);
   });
 
-  it('the Hugging Face provider stub also throws a clear not-implemented error', async () => {
-    const { HuggingFaceProvider } = require('../../src/ai-scheduler/providers/huggingface-provider');
-    const provider = new HuggingFaceProvider();
-    await expect(provider.proposePolicy({} as PolicyPromptContext)).rejects.toThrow(/Not implemented yet/);
-  });
+  // QwenProvider's own tests (against a mock local Ollama server) live in
+  // tests/ai-scheduler/qwen-provider.test.ts, since it needs no API key
+  // and behaves differently enough (HTTP to a local server, not a
+  // hosted API) to warrant its own dedicated test file.
 });

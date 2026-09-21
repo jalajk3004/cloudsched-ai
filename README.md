@@ -142,3 +142,13 @@ TEAM.md             who implements which LLM provider
 ```sh
 npx ts-node src/experiment/compare-server-configs.ts synthetic cpu-heavy 500
 ```
+
+#to test qwen model
+```sh
+npx ts-node src/experiment/run-ai-search-cli.ts qwen balanced
+npx ts-node src/experiment/run-ai-search-cli.ts qwen cpu-heavy
+npx ts-node src/experiment/run-ai-search-cli.ts qwen mem-heavy
+npx ts-node src/experiment/run-ai-search-cli.ts qwen burst
+npx ts-node src/experiment/run-ai-search-cli.ts qwen mixed
+```
+
