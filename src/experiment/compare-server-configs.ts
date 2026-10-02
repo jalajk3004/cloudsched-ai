@@ -9,7 +9,6 @@ import { computeMetrics, computeOverallScores } from '../metrics/metrics-engine'
 import { Task, Scheduler } from '../domain/types';
 import { SERVER_CONFIGS } from './server-configs';
 
-
 async function loadTasksFor(source: string, arg: string, maxTasks: number): Promise<Task[]> {
     if (source === 'synthetic') {
         return generateWorkload({
@@ -29,16 +28,9 @@ async function main() {
 
     if (!source || !arg) {
         console.error('Usage: ts-node compare-server-configs.ts <synthetic|azure|huawei> <scenario-or-path> [maxTasks]');
-        console.error('Examples:');
-        console.error('  ts-node compare-server-configs.ts synthetic cpu-heavy');
-        console.error('  ts-node compare-server-configs.ts azure data/azure.sqlite 500');
-        console.error('  ts-node compare-server-configs.ts huawei data/huawei-east.csv 500');
         process.exit(1);
     }
 
-    // Load the workload ONCE - every server config below is tested against
-    // the exact same tasks, so any difference in results is caused only by
-    // the server layout, never by different data.
     const tasks = await loadTasksFor(source, arg, maxTasks);
     console.log(`Loaded ${tasks.length} tasks from source="${source}" (${arg})`);
     console.log(`Testing the SAME ${tasks.length} tasks against ${Object.keys(SERVER_CONFIGS).length} different server layouts:\n`);

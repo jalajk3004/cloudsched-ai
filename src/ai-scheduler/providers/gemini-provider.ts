@@ -1,36 +1,97 @@
-import { LLMProvider, PolicyPromptContext, PolicyProposal } from '../llm-provider';
+import { GoogleGenAI } from '@google/genai';
+import { LLMProvider, PolicyPromptContext, PolicyProposal, ALLOWED_POLICY_FEATURES } from '../llm-provider';
 
 /**
  * ============================================================
  *  OWNER: Member 2
- *  MODEL: Google Gemini (e.g. gemini-1.5-flash or similar)
+ *  MODEL: Google Gemini (gemini-2.5-flash)
  * ============================================================
  *
- * TODO (Member 2):
- *   1. Add GEMINI_API_KEY to your local .env (never commit it).
- *   2. Install the Gemini SDK: npm install @google/generative-ai
- *   3. Build a prompt from `context` (scenario, server summary,
- *      sample workload summary, allowed features, past attempts).
- *   4. Call the Gemini generateContent endpoint, requesting JSON
- *      output matching the PolicyProposal shape from ../llm-provider.ts.
- *   5. Parse the response into a PolicyProposal and return it.
- *      Do NOT validate it here - validatePolicySchema() in
- *      ../policy-validator.ts already does that, uniformly for every
- *      provider. Keep this file limited to "talk to Gemini, return JSON".
- *
- * Nothing in the rest of the system needs to change once this is
- * filled in - the search loop and AiScheduler only depend on the
- * LLMProvider interface, not on Gemini specifically.
+ * This talks to the Gemini API and returns whatever JSON it produces,
+ * parsed into a PolicyProposal shape. It does NOT validate the result -
+ * that's validatePolicySchema()'s job in ../policy-validator.ts, applied
+ * uniformly to every provider's output, regardless of which model
+ * produced it.
  */
 export class GeminiProvider implements LLMProvider {
   readonly name = 'gemini';
+  private client: GoogleGenAI;
+  private model: string;
 
-  constructor(private apiKey?: string) {}
-
-  async proposePolicy(_context: PolicyPromptContext): Promise<PolicyProposal> {
-    throw new Error(
-      '[GeminiProvider] Not implemented yet. Member 2: implement the Gemini API call here. ' +
-      'See the TODO comment at the top of this file.',
-    );
+  constructor(apiKey?: string, model: string = 'gemini-2.5-flash') {
+    const key = apiKey ?? process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new Error('[GeminiProvider] No API key found. Set GEMINI_API_KEY in your .env file.');
+    }
+    this.client = new GoogleGenAI({ apiKey: key });
+    this.model = model;
   }
+
+  async proposePolicy(context: PolicyPromptContext): Promise<PolicyProposal> {
+    const prompt = buildPrompt(context);
+
+    const response = await this.client.models.generateContent({
+      model: this.model,
+      contents: prompt,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const raw = response.text;
+    if (!raw) {
+      throw new Error('[GeminiProvider] Empty response from Gemini.');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(`[GeminiProvider] Gemini did not return valid JSON: ${raw.slice(0, 200)}`);
+    }
+
+    return parsed as PolicyProposal;
+  }
+}
+
+const SYSTEM_PROMPT = `You are designing a scheduling policy for a cloud task scheduler.
+Your job is to propose a set of WEIGHTS over a fixed list of features. You do not write code
+and you do not control anything else - only these weights.
+
+You must respond with ONLY a JSON object in exactly this shape, nothing else:
+{
+  "policyName": "<a short descriptive name for this attempt>",
+  "weights": {
+    "<featureName>": <number between -1 and 1>,
+    ...
+  },
+  "rejectIfNoServerFits": true,
+  "tieBreak": "lowest_server_index"
+}
+
+Rules:
+- "weights" keys MUST come only from this allowed list: ${ALLOWED_POLICY_FEATURES.join(', ')}
+- You do not need to use every feature - only include the ones you want to weight.
+- Every weight value MUST be a number between -1 and 1 (inclusive).
+- "tieBreak" MUST be exactly "lowest_server_index" or "highest_server_index".
+- Return ONLY the JSON object. No explanation, no markdown, no code fences.`;
+
+function buildPrompt(context: PolicyPromptContext): string {
+  const historyText = context.pastAttempts.length === 0
+    ? 'This is the first attempt - no history yet.'
+    : context.pastAttempts
+      .map((a, i) => `Attempt ${i + 1}: policy=${JSON.stringify(a.policy)} -> score=${a.overallScore.toFixed(3)}`)
+      .join('\n');
+
+  return `Scenario: ${context.scenario}
+Servers available: ${context.serverCountSummary}
+Sample workload: ${context.sampleWorkloadSummary}
+Allowed features: ${context.allowedFeatures.join(', ')}
+
+Past attempts and their scores (higher score is better):
+${historyText}
+
+Propose a new policy. If past attempts exist, try to improve on the best score so far
+by adjusting the weights - don't just repeat the same policy.`;
 }

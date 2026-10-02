@@ -65,18 +65,34 @@ describe('runSearchLoop (using a mock provider - no real LLM needed)', () => {
   });
 
   it('the Groq provider throws a clear error when no API key is configured', async () => {
-    const { GroqProvider } = require('../../src/ai-scheduler/providers/groq-provider');
-    expect(() => new GroqProvider()).toThrow(/No API key found/);
+    const original = process.env.GROQ_API_KEY;
+    delete process.env.GROQ_API_KEY;
+    try {
+      const { GroqProvider } = require('../../src/ai-scheduler/providers/groq-provider');
+      expect(() => new GroqProvider()).toThrow(/No API key found/);
+    } finally {
+      if (original !== undefined) {
+        process.env.GROQ_API_KEY = original;
+      }
+    }
   });
 
-  it('the still-stubbed Gemini provider throws a clear not-implemented error', async () => {
-    const { GeminiProvider } = require('../../src/ai-scheduler/providers/gemini-provider');
-    const provider = new GeminiProvider();
-    await expect(provider.proposePolicy({} as PolicyPromptContext)).rejects.toThrow(/Not implemented yet/);
+  it('the Gemini provider throws a clear error when no API key is configured', async () => {
+    const original = process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    try {
+      const { GeminiProvider } = require('../../src/ai-scheduler/providers/gemini-provider');
+      expect(() => new GeminiProvider()).toThrow(/No API key found/);
+    } finally {
+      if (original !== undefined) {
+        process.env.GEMINI_API_KEY = original;
+      }
+    }
   });
 
+  // GeminiProvider's parsing/error-handling logic (with a mocked SDK
+  // client, no real API calls) is tested in
+  // tests/ai-scheduler/gemini-provider.test.ts.
   // QwenProvider's own tests (against a mock local Ollama server) live in
-  // tests/ai-scheduler/qwen-provider.test.ts, since it needs no API key
-  // and behaves differently enough (HTTP to a local server, not a
-  // hosted API) to warrant its own dedicated test file.
+  // tests/ai-scheduler/qwen-provider.test.ts.
 });

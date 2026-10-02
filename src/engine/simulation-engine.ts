@@ -47,7 +47,6 @@ export function runSimulation(
   }));
 
   // Deep-copy tasks so repeated runs (different schedulers) never share mutable state.
-  // Deep-copy tasks so repeated runs (different schedulers) never share mutable state.
   const tasks: Task[] = taskQueue.map(t => ({ ...t, status: 'pending' as const }));
   const taskById = new Map(tasks.map(t => [t.id, t]));
 

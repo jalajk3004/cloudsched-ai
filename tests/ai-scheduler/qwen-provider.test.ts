@@ -10,9 +10,6 @@ const sampleContext: PolicyPromptContext = {
     pastAttempts: [],
 };
 
-/** Spins up a tiny local HTTP server that mimics Ollama's /api/chat
- *  response shape, so we can test QwenProvider's parsing and error
- *  handling without needing a real Ollama installation. */
 function startMockOllama(responder: (body: any) => { status: number; json: any }): Promise<{ url: string; close: () => Promise<void> }> {
     return new Promise(resolve => {
         const server = http.createServer((req, res) => {
@@ -80,7 +77,6 @@ describe('QwenProvider (against a mock local Ollama server)', () => {
     });
 
     it('throws a clear "is Ollama running?" error when the server is unreachable', async () => {
-        // deliberately point at a port nothing is listening on
         const provider = new QwenProvider('http://localhost:1', 'qwen3:4b');
         await expect(provider.proposePolicy(sampleContext)).rejects.toThrow(/Is Ollama running/);
     });

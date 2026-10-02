@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { GroqProvider } from '../ai-scheduler/providers/groq-provider';
 import { GeminiProvider } from '../ai-scheduler/providers/gemini-provider';
 import { QwenProvider } from '../ai-scheduler/providers/qwen-provider';
@@ -64,6 +65,15 @@ async function main() {
       `score=${entry.overallScore?.toFixed(3) ?? 'n/a'} accepted=${entry.accepted}` +
       (entry.schemaRejectReason ? ` reason="${entry.schemaRejectReason}"` : ''),
     );
+    if (entry.metrics) {
+      const m = entry.metrics;
+      console.log(
+        `        CPU%=${m.cpuUtilizationPct.toFixed(1)} Mem%=${m.memUtilizationPct.toFixed(1)} ` +
+        `WastedCPU=${m.wastedCpu.toFixed(0)} WastedMem=${m.wastedMem.toFixed(0)} ` +
+        `Scheduled=${m.successfullyScheduled} Rejected=${m.rejected} ` +
+        `AvgWait=${m.avgWaitingTime.toFixed(2)} AvgTurnaround=${m.avgTurnaroundTime.toFixed(2)}`,
+      );
+    }
   }
 
   console.log('\n--- Result ---');

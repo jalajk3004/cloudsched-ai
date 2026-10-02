@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { FirstFitScheduler } from '../schedulers/first-fit';
 import { BestFitScheduler } from '../schedulers/best-fit';
 import { RoundRobinScheduler } from '../schedulers/round-robin';

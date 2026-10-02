@@ -20,7 +20,7 @@ export interface ExperimentResult {
   overallScores: Record<string, number>;       // computed on the averaged metrics
 }
 
-function averageMetrics(list: Metrics[]): Metrics {
+export function averageMetrics(list: Metrics[]): Metrics {
   const n = list.length;
   const sum = (f: (m: Metrics) => number) => list.reduce((a, m) => a + f(m), 0) / n;
   return {

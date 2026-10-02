@@ -2,7 +2,7 @@ import { LLMProvider, PolicyProposal, PastAttempt, PolicyPromptContext } from '.
 import { validatePolicySchema } from './policy-validator';
 import { PolicyInterpreterScheduler } from './policy-interpreter';
 import { runSimulation, ServerConfig } from '../engine/simulation-engine';
-import { computeMetrics } from '../metrics/metrics-engine';
+import { computeMetrics, Metrics } from '../metrics/metrics-engine';
 import { Task } from '../domain/types';
 
 export interface SearchLogEntry {
@@ -12,6 +12,7 @@ export interface SearchLogEntry {
   schemaValid: boolean;
   schemaRejectReason?: string;
   dryRunOk?: boolean;
+  metrics?: Metrics; // full breakdown (CPU%, mem%, waste, rejections, wait, turnaround) - not just the score
   overallScore?: number;
   accepted: boolean;
 }
@@ -69,6 +70,9 @@ export async function runSearchLoop(
   const workloadSummary = `${sampleTasks.length} tasks, avg cpu=${taskCpuAvg.toFixed(1)}, avg mem=${taskMemAvg.toFixed(0)}MB`;
 
   for (let i = 1; i <= iterations; i++) {
+    if (i > 1) {
+      await new Promise(r => setTimeout(r, 1000));
+    }
     const context: PolicyPromptContext = {
       scenario,
       serverCountSummary: serverSummary,
@@ -118,7 +122,7 @@ export async function runSearchLoop(
     }
     pastAttempts.push({ policy, overallScore });
 
-    log.push({ iteration: i, providerName: provider.name, proposedPolicy: policy, schemaValid: true, dryRunOk: true, overallScore, accepted });
+    log.push({ iteration: i, providerName: provider.name, proposedPolicy: policy, schemaValid: true, dryRunOk: true, metrics, overallScore, accepted });
   }
 
   return { bestPolicy, bestScore, log };
