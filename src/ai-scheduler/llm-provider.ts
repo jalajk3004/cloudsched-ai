@@ -5,7 +5,7 @@
 // call provider.proposePolicy(...) through this interface.
 //
 // This file intentionally contains NO real API calls to any LLM. It is
-// the shared contract the three provider stubs in ./providers/ implement.
+// the shared contract implemented by QwenProvider in ./providers/qwen-provider.ts.
 
 /** The whitelisted, bounded feature set an LLM is allowed to weight.
  *  Nothing outside this list has any effect on scheduling - this is what
@@ -55,8 +55,8 @@ export interface PolicyPromptContext {
  * implementation is plugged in.
  */
 export interface LLMProvider {
-  /** Short identifier, e.g. 'groq', 'gemini', 'huggingface'. Used only for
-   *  logging which member's model produced a given policy. */
+  /** Short identifier, e.g. 'qwen'. Used for
+   *  logging which model produced a given policy. */
   readonly name: string;
 
   /** Given the current context, propose a policy. Must return a

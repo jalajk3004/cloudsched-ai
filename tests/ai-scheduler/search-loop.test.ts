@@ -63,36 +63,4 @@ describe('runSearchLoop (using a mock provider - no real LLM needed)', () => {
     expect(result.log.length).toBe(2);
     expect(result.log[0].schemaRejectReason).toMatch(/Provider threw/);
   });
-
-  it('the Groq provider throws a clear error when no API key is configured', async () => {
-    const original = process.env.GROQ_API_KEY;
-    delete process.env.GROQ_API_KEY;
-    try {
-      const { GroqProvider } = require('../../src/ai-scheduler/providers/groq-provider');
-      expect(() => new GroqProvider()).toThrow(/No API key found/);
-    } finally {
-      if (original !== undefined) {
-        process.env.GROQ_API_KEY = original;
-      }
-    }
-  });
-
-  it('the Gemini provider throws a clear error when no API key is configured', async () => {
-    const original = process.env.GEMINI_API_KEY;
-    delete process.env.GEMINI_API_KEY;
-    try {
-      const { GeminiProvider } = require('../../src/ai-scheduler/providers/gemini-provider');
-      expect(() => new GeminiProvider()).toThrow(/No API key found/);
-    } finally {
-      if (original !== undefined) {
-        process.env.GEMINI_API_KEY = original;
-      }
-    }
-  });
-
-  // GeminiProvider's parsing/error-handling logic (with a mocked SDK
-  // client, no real API calls) is tested in
-  // tests/ai-scheduler/gemini-provider.test.ts.
-  // QwenProvider's own tests (against a mock local Ollama server) live in
-  // tests/ai-scheduler/qwen-provider.test.ts.
 });

@@ -1,6 +1,4 @@
 import 'dotenv/config';
-import { GroqProvider } from '../ai-scheduler/providers/groq-provider';
-import { GeminiProvider } from '../ai-scheduler/providers/gemini-provider';
 import { QwenProvider } from '../ai-scheduler/providers/qwen-provider';
 import { LLMProvider } from '../ai-scheduler/llm-provider';
 import { runSearchLoop } from '../ai-scheduler/search-loop';
@@ -17,21 +15,21 @@ import { Scheduler } from '../domain/types';
 
 const WORKLOAD_DB_PATH = process.env.WORKLOAD_DB_PATH || 'data/workload-history.sqlite';
 
-const providers: Record<string, () => LLMProvider> = {
-    groq: () => new GroqProvider(process.env.GROQ_API_KEY),
-    gemini: () => new GeminiProvider(process.env.GEMINI_API_KEY),
-    qwen: () => new QwenProvider(process.env.OLLAMA_HOST, process.env.OLLAMA_MODEL),
-};
+// Supports: ts-node run-full-comparison-cli.ts [scenario] [repeats]
+// or:       ts-node run-full-comparison-cli.ts qwen [scenario] [repeats]
+const args = process.argv.slice(2);
+let scenario: WorkloadScenario = 'mixed';
+let repeats = 5;
 
-const providerName = process.argv[2];
-const scenario = (process.argv[3] as WorkloadScenario) || 'mixed';
-const repeats = process.argv[4] ? parseInt(process.argv[4], 10) : 5;
-
-if (!providerName || !providers[providerName]) {
-    console.error(`Usage: ts-node run-full-comparison-cli.ts <groq|gemini|qwen> <scenario> [repeats]`);
-    console.error(`Available providers: ${Object.keys(providers).join(', ')}`);
-    process.exit(1);
+if (args[0] && args[0].toLowerCase() === 'qwen') {
+    scenario = (args[1] as WorkloadScenario) || 'mixed';
+    repeats = args[2] ? parseInt(args[2], 10) : 5;
+} else if (args[0]) {
+    scenario = (args[0] as WorkloadScenario) || 'mixed';
+    repeats = args[1] ? parseInt(args[1], 10) : 5;
 }
+
+const providerName = 'qwen';
 
 const servers: ServerConfig[] = [
     { id: 's1', cpuCapacity: 16, memCapacity: 32768 },
@@ -52,9 +50,10 @@ async function main() {
 
     let provider: LLMProvider;
     try {
-        provider = providers[providerName]();
+        provider = new QwenProvider(process.env.OLLAMA_HOST, process.env.OLLAMA_MODEL);
     } catch (err) {
-        console.error(`\nCould not start the ${providerName} provider:\n  ${(err as Error).message}\n`);
+        console.error(`\nCould not start the Qwen provider:\n  ${(err as Error).message}\n`);
+        console.error('Make sure Ollama is installed and running (e.g. ollama run qwen3:4b).');
         process.exit(1);
     }
 

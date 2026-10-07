@@ -1,30 +1,20 @@
 import 'dotenv/config';
-import { GroqProvider } from '../ai-scheduler/providers/groq-provider';
-import { GeminiProvider } from '../ai-scheduler/providers/gemini-provider';
 import { QwenProvider } from '../ai-scheduler/providers/qwen-provider';
 import { LLMProvider } from '../ai-scheduler/llm-provider';
 import { runSearchLoop } from '../ai-scheduler/search-loop';
-import { generateWorkload } from '../workload/generator';
+import { generateWorkload, WorkloadScenario } from '../workload/generator';
 import { ServerConfig } from '../engine/simulation-engine';
 
-const providerName = process.argv[2];
-if (!providerName) {
-  console.error('Usage: ts-node run-ai-search-cli.ts <groq|gemini|qwen> [scenario]');
-  process.exit(1);
+// Supports: ts-node run-ai-search-cli.ts [scenario] or ts-node run-ai-search-cli.ts qwen [scenario]
+const args = process.argv.slice(2);
+let scenario: WorkloadScenario = 'mixed';
+if (args[0] && args[0].toLowerCase() === 'qwen') {
+  scenario = (args[1] as WorkloadScenario) || 'mixed';
+} else if (args[0]) {
+  scenario = args[0] as WorkloadScenario;
 }
 
-const providers: Record<string, () => LLMProvider> = {
-  groq: () => new GroqProvider(process.env.GROQ_API_KEY),
-  gemini: () => new GeminiProvider(process.env.GEMINI_API_KEY),
-  qwen: () => new QwenProvider(process.env.OLLAMA_HOST, process.env.OLLAMA_MODEL), // fully independent - runs locally via Ollama, no API key
-};
-
-if (!providers[providerName]) {
-  console.error(`Unknown provider "${providerName}". Choose one of: ${Object.keys(providers).join(', ')}`);
-  process.exit(1);
-}
-
-const scenario = (process.argv[3] as any) || 'mixed';
+const providerName = 'qwen';
 
 const sampleServers: ServerConfig[] = [
   { id: 's1', cpuCapacity: 16, memCapacity: 32768 },
@@ -47,10 +37,10 @@ const sampleTasks = generateWorkload({
 async function main() {
   let provider: LLMProvider;
   try {
-    provider = providers[providerName]();
+    provider = new QwenProvider(process.env.OLLAMA_HOST, process.env.OLLAMA_MODEL);
   } catch (err) {
-    console.error(`\nCould not start the ${providerName} provider:\n  ${(err as Error).message}\n`);
-    console.error('Check your .env file has the right API key set, then try again.');
+    console.error(`\nCould not start the Qwen provider:\n  ${(err as Error).message}\n`);
+    console.error('Make sure Ollama is installed and running (e.g. ollama run qwen3:4b).');
     process.exit(1);
   }
 

@@ -2,14 +2,11 @@ import { LLMProvider, PolicyPromptContext, PolicyProposal, ALLOWED_POLICY_FEATUR
 
 /**
  * ============================================================
- *  OWNER: Member 3
  *  MODEL: Qwen3, run locally via Ollama (default tag: qwen3:4b)
  * ============================================================
  *
- * This is fully independent of the Groq/Gemini providers - no shared
- * account, no shared API key, no external service at all. It talks to
- * a local Ollama server (installed separately from ollama.com) running
- * on this machine, over plain HTTP.
+ * This talks to a local Ollama server running on this machine over plain HTTP.
+ * No external API key is needed.
  *
  * SETUP (done once, outside this code):
  *   1. Install Ollama from https://ollama.com
@@ -74,8 +71,7 @@ export class QwenProvider implements LLMProvider {
   }
 }
 
-// Same prompt shape as the other providers, deliberately - keeps the
-// comparison between models fair, since all are given identical instructions.
+// Prompt instructions to constrain model output to valid PolicyProposal JSON.
 const SYSTEM_PROMPT = `You are designing a scheduling policy for a cloud task scheduler.
 Your job is to propose a set of WEIGHTS over a fixed list of features. You do not write code
 and you do not control anything else - only these weights.

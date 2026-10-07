@@ -44,45 +44,11 @@ const qwenScheduler: SchedulerProvider = {
     },
 };
 
-// ── Not-yet-implemented providers ───────────────────────────────────────
-// These exist ONLY so the UI has something to render "Not Connected"
-// for. Their schedule() is never meant to be called - status stays
-// "disconnected" until a teammate merges a real implementation and
-// flips it (see the comment above each one).
-const geminiScheduler: SchedulerProvider = {
-    id: "gemini",
-    name: "Gemini",
-    type: "ai",
-    status: "disconnected",
-    async schedule(): Promise<SchedulingResult> {
-        // When Developer 2 merges the Gemini branch: replace this function
-        // body with a real call, and change status above to "idle". Nothing
-        // else in the dashboard needs to change for the card/charts/table
-        // to start showing Gemini automatically.
-        throw new Error("Gemini scheduler is not connected yet.");
-    },
-};
-
-const groqScheduler: SchedulerProvider = {
-    id: "groq",
-    name: "Groq",
-    type: "ai",
-    status: "disconnected",
-    async schedule(): Promise<SchedulingResult> {
-        // Same as Gemini above: Developer 3 replaces this body and flips
-        // status to "idle" once their branch is merged.
-        throw new Error("Groq scheduler is not connected yet.");
-    },
-};
-
 /** The single source of truth for which schedulers exist. Every part of
- *  the dashboard (cards, charts, table, registry lookups) iterates this
- *  array - nothing hard-codes "qwen" or "gemini" anywhere else. */
+ *  the dashboard (cards, charts, table, registry lookups) iterates this array. */
 export const schedulers: SchedulerProvider[] = [
     baselineScheduler,
     qwenScheduler,
-    geminiScheduler,
-    groqScheduler,
 ];
 
 export function getScheduler(id: SchedulerProvider["id"]): SchedulerProvider | undefined {

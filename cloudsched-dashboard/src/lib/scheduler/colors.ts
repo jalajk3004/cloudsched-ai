@@ -7,6 +7,4 @@ import { SchedulerId } from "./types";
 export const SCHEDULER_COLORS: Record<SchedulerId, string> = {
     baseline: "#a3a3a3", // neutral gray
     qwen: "#38bdf8", // sky blue
-    gemini: "#c084fc", // violet (reserved, not connected yet)
-    groq: "#fb923c", // orange (reserved, not connected yet)
 };

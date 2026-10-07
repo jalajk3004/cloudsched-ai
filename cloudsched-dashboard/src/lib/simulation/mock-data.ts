@@ -19,9 +19,8 @@ interface MockProfile {
     throughputBase: number;
 }
 
-// Only baseline/qwen get a profile - gemini/groq are "disconnected" and
-// this function should never be called for them (the hook guards this).
-const PROFILES: Partial<Record<SchedulerId, MockProfile>> = {
+// Mock profiles for baseline and qwen schedulers.
+const PROFILES: Record<SchedulerId, MockProfile> = {
     baseline: {
         cpuBase: 68, cpuVariance: 8,
         memBase: 55, memVariance: 6,

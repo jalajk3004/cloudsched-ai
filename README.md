@@ -100,17 +100,11 @@ npx ts-node src/experiment/run-huawei-data-cli.ts /tmp/demo.csv
 
 ## 4. Moving on to the AI scheduler (Phase 4)
 
-The AI-scheduler scaffolding is already built and tested - it just has no
-real LLM wired in yet. See **`TEAM.md`** for exactly who implements which
-model. In short:
+The AI scheduler is powered locally by Qwen3 via Ollama:
 
 ```bash
-npx ts-node src/experiment/run-ai-search-cli.ts groq cpu-heavy
+npx ts-node src/experiment/run-ai-search-cli.ts qwen cpu-heavy
 ```
-Right now this correctly fails with "Not implemented yet" - that's
-expected. Once a member fills in their provider file
-(`src/ai-scheduler/providers/<name>-provider.ts`), this same command
-will actually run the generate-test-evaluate-improve search loop.
 
 ---
 
@@ -124,10 +118,10 @@ src/
   workload/         synthetic generator + real-data adapters (Azure, Huawei)
   metrics/          the shared metrics formulas
   ai-scheduler/     LLM provider interface, validator, policy interpreter,
-                     search loop, and the three provider stubs
+                    search loop, and Qwen provider
   experiment/       CLI entry points (this is what you actually run)
 tests/              one test file per shared module, plus fixtures/
-TEAM.md             who implements which LLM provider
+TEAM.md             project overview
 ```
 
 ## 7. Common issues
