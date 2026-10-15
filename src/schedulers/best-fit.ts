@@ -1,19 +1,18 @@
-import { Scheduler, Task, Server, SchedulingDecision } from '../domain/types';
+import { Scheduler, SchedulingDecision, TaskView, ServerView } from '../domain/types';
 
 /**
- * Best-Fit: for each pending task, among all servers with enough free
- * capacity, pick the one that leaves the SMALLEST leftover capacity after
- * placement (i.e. the tightest fit). "Leftover" is defined once here as
- * (cpuLeft - cpuRequired) + (memLeft - memRequired) after hypothetical
- * placement — the same definition the AI policy's "leftover" feature uses,
- * so both are directly comparable.
+ * Best-Fit: among servers with enough free capacity, pick the one with the SMALLEST
+ * residual after placement, where the residual is measured in dimensionless fractions
+ * of that server's capacity:
+ *     residual_j = (cpuFree_j - cpu_i) / CPU_j  +  (memFree_j - mem_i) / MEM_j
+ * Units cancel, so the decision no longer depends on whether memory is counted in MB or GB.
  */
 export class BestFitScheduler implements Scheduler {
   readonly name = 'best-fit';
 
   schedule(
-    pendingTasks: ReadonlyArray<Task>,
-    servers: ReadonlyArray<Server>,
+    pendingTasks: ReadonlyArray<TaskView>,
+    servers: ReadonlyArray<ServerView>,
     _currentTick: number,
   ): SchedulingDecision[] {
     const freeCpu = new Map(servers.map(s => [s.id, s.cpuCapacity - s.cpuUsed]));
@@ -24,15 +23,17 @@ export class BestFitScheduler implements Scheduler {
 
     for (const task of ordered) {
       let bestServerId: string | null = null;
-      let bestLeftover = Infinity;
+      let bestResidual = Infinity;
 
       for (const server of servers) {
         const cpuLeft = freeCpu.get(server.id)!;
         const memLeft = freeMem.get(server.id)!;
         if (cpuLeft >= task.cpuRequired && memLeft >= task.memRequired) {
-          const leftover = (cpuLeft - task.cpuRequired) + (memLeft - task.memRequired);
-          if (leftover < bestLeftover) {
-            bestLeftover = leftover;
+          const residual =
+            (cpuLeft - task.cpuRequired) / server.cpuCapacity +
+            (memLeft - task.memRequired) / server.memCapacity;
+          if (residual < bestResidual) { // strict: ties go to the lowest server index
+            bestResidual = residual;
             bestServerId = server.id;
           }
         }

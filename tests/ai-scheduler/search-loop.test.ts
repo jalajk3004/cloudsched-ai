@@ -14,7 +14,7 @@ class AlwaysValidMockProvider implements LLMProvider {
   async proposePolicy(_context: PolicyPromptContext): Promise<PolicyProposal> {
     return {
       policyName: 'mock-policy',
-      weights: { leftoverCpuAfterPlacement: -0.4, taskPriority: 0.5 },
+      weights: { cpuFit: 0.4, priority: 0.5 },
       rejectIfNoServerFits: true,
       tieBreak: 'lowest_server_index',
     };
@@ -38,29 +38,32 @@ class ThrowingMockProvider implements LLMProvider {
 }
 
 describe('runSearchLoop (using a mock provider - no real LLM needed)', () => {
-  it('accepts a valid policy from the provider and returns it as the best policy', async () => {
+  it('accepts a valid policy from the provider and logs LLM attempts', async () => {
     const result = await runSearchLoop(new AlwaysValidMockProvider(), 'mixed', servers, tasks, 30, 3);
     expect(result.bestPolicy).not.toBeNull();
-    expect(result.bestPolicy!.policyName).toBe('mock-policy');
-    expect(result.log.length).toBe(3);
-    // every attempt should be schema-valid and pass the dry run...
-    expect(result.log.every(entry => entry.schemaValid && entry.dryRunOk)).toBe(true);
-    // ...but only the FIRST identical proposal counts as "accepted" (a
-    // strictly better score than the best-so-far) - repeating the same
-    // policy again isn't an improvement, which is correct behavior.
-    expect(result.log.filter(entry => entry.accepted).length).toBe(1);
+    const llmEntries = result.log.filter(entry => entry.source === 'llm');
+    expect(llmEntries.length).toBe(3);
+    expect(llmEntries[0].schemaValid).toBe(true);
+    expect(llmEntries[0].dryRunOk).toBe(true);
+    // Subsequent identical proposals are rejected by distance check as too similar
+    expect(llmEntries[1].schemaRejectReason).toMatch(/too similar/);
   });
 
-  it('rejects an invalid policy at the schema stage and keeps no best policy', async () => {
+  it('rejects an invalid policy at the schema stage and attributes winner to the library', async () => {
     const result = await runSearchLoop(new AlwaysInvalidMockProvider(), 'mixed', servers, tasks, 30, 2);
-    expect(result.bestPolicy).toBeNull();
-    expect(result.log.every(entry => !entry.schemaValid)).toBe(true);
+    const llmEntries = result.log.filter(entry => entry.source === 'llm');
+    expect(llmEntries.length).toBe(2);
+    expect(llmEntries.every(entry => !entry.schemaValid)).toBe(true);
+    expect(result.bestSource).toBe('library');
+    expect(result.bestPolicy).not.toBeNull();
   });
 
   it('handles a provider that throws without crashing the whole loop', async () => {
     const result = await runSearchLoop(new ThrowingMockProvider(), 'mixed', servers, tasks, 30, 2);
-    expect(result.bestPolicy).toBeNull();
-    expect(result.log.length).toBe(2);
-    expect(result.log[0].schemaRejectReason).toMatch(/Provider threw/);
+    const llmEntries = result.log.filter(entry => entry.source === 'llm');
+    expect(llmEntries.length).toBe(2);
+    expect(llmEntries[0].schemaRejectReason).toMatch(/Provider threw/);
+    expect(result.bestSource).toBe('library');
+    expect(result.bestPolicy).not.toBeNull();
   });
 });

@@ -146,3 +146,9 @@ npx ts-node src/experiment/run-ai-search-cli.ts qwen burst
 npx ts-node src/experiment/run-ai-search-cli.ts qwen mixed
 ```
 
+
+npx ts-node src/experiment/run-full-comparison-cli.ts qwen mixed 10
+npx ts-node src/experiment/run-full-comparison-cli.ts qwen burst 10
+npx ts-node src/experiment/run-full-comparison-cli.ts qwen mem-heavy 10
+npx ts-node src/experiment/run-full-comparison-cli.ts qwen balanced 10
+npx ts-node src/experiment/run-full-comparison-cli.ts qwen cpu-heavy 10

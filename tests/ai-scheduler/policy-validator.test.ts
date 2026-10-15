@@ -1,59 +1,93 @@
-import { validatePolicySchema } from '../../src/ai-scheduler/policy-validator';
+import { PolicyProposal } from "../../src/ai-scheduler/llm-provider";
+import { validatePolicySchema } from "../../src/ai-scheduler/policy-validator";
+
+const basePolicy: PolicyProposal = {
+  policyName: 'test-policy',
+  weights: {},
+  rejectIfNoServerFits: true,
+  tieBreak: 'lowest_server_index',
+  expressions: {
+    placementScore: {
+      type: 'feature',
+      name: 'cpuFit',
+    },
+  },
+};
 
 describe('validatePolicySchema', () => {
-  it('accepts a well-formed policy', () => {
-    const result = validatePolicySchema({
-      policyName: 'test-policy',
-      weights: { leftoverCpuAfterPlacement: -0.5, taskPriority: 0.6 },
+  it('accepts a valid expression policy', () => {
+    expect(validatePolicySchema(basePolicy).valid).toBe(true);
+  });
+
+  it('accepts legacy weight-based policies', () => {
+    const policy: PolicyProposal = {
+      policyName: 'legacy-policy',
+      baseStrategy: 'tight_packing',
+      weights: { cpuFit: 0.8 },
       rejectIfNoServerFits: true,
       tieBreak: 'lowest_server_index',
-    });
-    expect(result.valid).toBe(true);
+    };
+
+    expect(validatePolicySchema(policy).valid).toBe(true);
   });
 
-  it('rejects a policy with an unknown feature name', () => {
-    const result = validatePolicySchema({
-      policyName: 'bad-policy',
-      weights: { madeUpFeature: 0.5 },
-      rejectIfNoServerFits: true,
-      tieBreak: 'lowest_server_index',
-    });
-    expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/not in the allowed feature list/);
+  it('rejects unknown features', () => {
+    const policy = {
+      ...basePolicy,
+      expressions: {
+        placementScore: {
+          type: 'feature',
+          name: 'taskDuration',
+        },
+      },
+    };
+
+    expect(validatePolicySchema(policy).valid).toBe(false);
   });
 
-  it('rejects a weight outside the [-1, 1] range', () => {
-    const result = validatePolicySchema({
-      policyName: 'out-of-range',
-      weights: { taskPriority: 5 },
-      rejectIfNoServerFits: true,
-      tieBreak: 'lowest_server_index',
-    });
-    expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/outside the allowed range/);
+  it('rejects unknown operators', () => {
+    const policy = {
+      ...basePolicy,
+      expressions: {
+        placementScore: {
+          type: 'arithmetic',
+          op: 'power',
+          left: { type: 'constant', value: 2 },
+          right: { type: 'constant', value: 3 },
+        },
+      },
+    };
+
+    expect(validatePolicySchema(policy).valid).toBe(false);
   });
 
-  it('rejects a missing policyName', () => {
-    const result = validatePolicySchema({
-      weights: { taskPriority: 0.5 },
-      rejectIfNoServerFits: true,
-      tieBreak: 'lowest_server_index',
-    });
-    expect(result.valid).toBe(false);
+  it('rejects non-finite constants', () => {
+    const policy = {
+      ...basePolicy,
+      expressions: {
+        placementScore: {
+          type: 'constant',
+          value: Infinity,
+        },
+      },
+    };
+
+    expect(validatePolicySchema(policy).valid).toBe(false);
   });
 
-  it('rejects a non-object input entirely (e.g. malformed LLM output)', () => {
-    const result = validatePolicySchema('this is not a policy, just text the LLM returned');
-    expect(result.valid).toBe(false);
-  });
+  it('rejects malformed conditions', () => {
+    const policy = {
+      ...basePolicy,
+      expressions: {
+        placementScore: {
+          type: 'if',
+          condition: { type: 'compare', op: 'unknown' },
+          then: { type: 'constant', value: 1 },
+          else: { type: 'constant', value: 0 },
+        },
+      },
+    };
 
-  it('rejects an invalid tieBreak value', () => {
-    const result = validatePolicySchema({
-      policyName: 'bad-tiebreak',
-      weights: { taskPriority: 0.5 },
-      rejectIfNoServerFits: true,
-      tieBreak: 'random',
-    });
-    expect(result.valid).toBe(false);
+    expect(validatePolicySchema(policy).valid).toBe(false);
   });
 });

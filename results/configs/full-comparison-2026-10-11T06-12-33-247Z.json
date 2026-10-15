@@ -1,0 +1,72 @@
+{
+  "servers": [
+    {
+      "id": "s1",
+      "cpuCapacity": 16,
+      "memCapacity": 32768
+    },
+    {
+      "id": "s2",
+      "cpuCapacity": 16,
+      "memCapacity": 32768
+    },
+    {
+      "id": "s3",
+      "cpuCapacity": 8,
+      "memCapacity": 16384
+    },
+    {
+      "id": "s4",
+      "cpuCapacity": 8,
+      "memCapacity": 16384
+    }
+  ],
+  "workload": {
+    "taskCount": 100,
+    "cpuRange": [
+      1,
+      8
+    ],
+    "memRange": [
+      512,
+      8192
+    ],
+    "durationRange": [
+      2,
+      20
+    ],
+    "simulationDuration": 100
+  },
+  "objective": {
+    "weights": {
+      "completion": 0.3,
+      "avgWait": 0.25,
+      "turnaround": 0.15,
+      "cpuUtilization": 0.15,
+      "memUtilization": 0.15
+    },
+    "scales": {
+      "avgWaitTicks": 20,
+      "turnaroundTicks": 30
+    }
+  },
+  "seedNamespaces": {
+    "training": "train-extra-*",
+    "validation": "val-*",
+    "final": "*-full-comparison-run*"
+  },
+  "scenario": "burst",
+  "repeats": 10,
+  "policy": {
+    "hypothesis": "Exploit Best-Fit's myopia by preserving future capacity to prevent small task slivers and fragmentation, which reduces p95 wait from 19.0 to 17.7",
+    "policyName": "future_tight",
+    "baseStrategy": "tight_packing",
+    "weights": {
+      "futureCapacity": 0.8,
+      "cpuFragmentation": -0.5,
+      "memoryFragmentation": -0.5
+    },
+    "rejectIfNoServerFits": true,
+    "tieBreak": "lowest_server_index"
+  }
+}

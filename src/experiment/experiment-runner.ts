@@ -1,7 +1,10 @@
 import { Scheduler } from '../domain/types';
 import { runSimulation, ServerConfig } from '../engine/simulation-engine';
 import { generateWorkload, WorkloadConfig } from '../workload/generator';
-import { computeMetrics, computeOverallScores, Metrics } from '../metrics/metrics-engine';
+import { computeMetrics, computeOverallScores, averageMetrics, Metrics } from '../metrics/metrics-engine';
+
+// averageMetrics now lives in metrics-engine.ts; re-exported here so older imports keep working.
+export { averageMetrics };
 
 export interface ExperimentConfig {
   servers: ServerConfig[];
@@ -17,23 +20,7 @@ export interface SchedulerFactory {
 export interface ExperimentResult {
   perSchedulerRuns: Record<string, Metrics[]>; // raw metrics for every repeat
   perSchedulerAvg: Record<string, Metrics>;    // averaged across repeats
-  overallScores: Record<string, number>;       // computed on the averaged metrics
-}
-
-export function averageMetrics(list: Metrics[]): Metrics {
-  const n = list.length;
-  const sum = (f: (m: Metrics) => number) => list.reduce((a, m) => a + f(m), 0) / n;
-  return {
-    schedulerName: list[0].schedulerName,
-    cpuUtilizationPct: sum(m => m.cpuUtilizationPct),
-    memUtilizationPct: sum(m => m.memUtilizationPct),
-    wastedCpu: sum(m => m.wastedCpu),
-    wastedMem: sum(m => m.wastedMem),
-    successfullyScheduled: sum(m => m.successfullyScheduled),
-    rejected: sum(m => m.rejected),
-    avgWaitingTime: sum(m => m.avgWaitingTime),
-    avgTurnaroundTime: sum(m => m.avgTurnaroundTime),
-  };
+  overallScores: Record<string, number>;       // fixed objective, computed on the averaged metrics
 }
 
 /**

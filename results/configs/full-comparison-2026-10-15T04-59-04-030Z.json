@@ -1,0 +1,88 @@
+{
+  "servers": [
+    {
+      "id": "s1",
+      "cpuCapacity": 16,
+      "memCapacity": 32768
+    },
+    {
+      "id": "s2",
+      "cpuCapacity": 16,
+      "memCapacity": 32768
+    },
+    {
+      "id": "s3",
+      "cpuCapacity": 8,
+      "memCapacity": 16384
+    },
+    {
+      "id": "s4",
+      "cpuCapacity": 8,
+      "memCapacity": 16384
+    }
+  ],
+  "workload": {
+    "taskCount": 100,
+    "cpuRange": [
+      1,
+      8
+    ],
+    "memRange": [
+      512,
+      8192
+    ],
+    "durationRange": [
+      2,
+      20
+    ],
+    "simulationDuration": 100
+  },
+  "objective": {
+    "weights": {
+      "completion": 0.3,
+      "avgWait": 0.25,
+      "turnaround": 0.15,
+      "cpuUtilization": 0.15,
+      "memUtilization": 0.15
+    },
+    "scales": {
+      "avgWaitTicks": 20,
+      "turnaroundTicks": 30
+    }
+  },
+  "seedNamespaces": {
+    "training": "train-extra-*",
+    "validation": "val-*",
+    "final": "*-full-comparison-run*"
+  },
+  "scenario": "balanced",
+  "repeats": 10,
+  "provider": "qwen",
+  "policy": {
+    "policyName": "cpuFragmentationWithFutureCapacity",
+    "hypothesis": "Prioritizing servers with high future capacity and low CPU fragmentation reduces excessive P95 wait times in CPU-heavy workloads without violating the P95 guardrail",
+    "weights": {},
+    "rejectIfNoServerFits": true,
+    "tieBreak": "lowest_server_index",
+    "expressions": {
+      "placementScore": {
+        "type": "arithmetic",
+        "op": "multiply",
+        "left": {
+          "type": "feature",
+          "name": "cpuFragmentation"
+        },
+        "right": {
+          "type": "feature",
+          "name": "futureCapacity"
+        }
+      },
+      "taskOrderingScore": {
+        "type": "feature",
+        "name": "priority"
+      }
+    }
+  },
+  "trainingWorkloadCount": 3,
+  "validationWorkloadCount": 3
+}

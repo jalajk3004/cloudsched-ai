@@ -35,24 +35,28 @@ async function loadTasksFor(source: string, arg: string): Promise<Task[]> {
  * This is what actually PROVES correctness, rather than just claiming it
  * from looking at the summary numbers.
  */
-function verify(scheduler: Scheduler, tasks: Task[]): { name: string; capacityOk: boolean; accountingOk: boolean; maxTick: number } {
-  const lastArrival = Math.max(0, ...tasks.map(t => t.arrivalTime + t.duration));
+function verify(scheduler: Scheduler, tasks: Task[]) {
+  const before = JSON.stringify(tasks);
+  const lastArrival = Math.max(0, ...tasks.map(t => t.arrivalTime));
   const result = runSimulation(scheduler, servers, tasks, lastArrival + 1);
 
   let capacityOk = true;
   for (const snap of result.history) {
-    for (const s of snap.servers) {
-      if (s.cpuUsed > s.cpuCapacity || s.memUsed > s.memCapacity) {
-        capacityOk = false;
-      }
-    }
+    for (const s of snap.servers) if (s.cpuUsed > s.cpuCapacity || s.memUsed > s.memCapacity) capacityOk = false;
   }
 
-  const scheduledCount = result.tasks.filter(t => t.status === 'running' || t.status === 'completed').length;
-  const rejectedCount = result.tasks.filter(t => t.status === 'rejected').length;
-  const accountingOk = scheduledCount + rejectedCount === tasks.length;
+  const completed = result.tasks.filter(t => t.status === 'completed');
+  const infeasible = result.tasks.filter(t => t.status === 'rejected').length;
+  const unresolved = result.tasks.filter(t => t.status === 'unresolved').length;
 
-  return { name: scheduler.name, capacityOk, accountingOk, maxTick: result.totalTicks };
+  return {
+    name: scheduler.name,
+    capacityOk,
+    accountingOk: completed.length + infeasible + unresolved === tasks.length,
+    timingOk: completed.every(t => t.startTime! >= t.arrivalTime && t.finishTime === t.startTime! + t.duration),
+    drainedOk: result.drained,
+    inputUnchanged: JSON.stringify(tasks) === before,
+  };
 }
 
 async function main() {
@@ -78,10 +82,10 @@ async function main() {
 
   let allPassed = true;
   for (const scheduler of schedulers) {
-    const { name, capacityOk, accountingOk } = verify(scheduler, tasks);
-    const status = capacityOk && accountingOk ? '✅ PASS' : '❌ FAIL';
-    if (!capacityOk || !accountingOk) allPassed = false;
-    console.log(`${name.padEnd(14)} capacity-never-exceeded=${capacityOk ? 'yes' : 'NO'}   all-tasks-accounted-for=${accountingOk ? 'yes' : 'NO'}   ${status}`);
+    const r = verify(scheduler, tasks);
+    const ok = r.capacityOk && r.accountingOk && r.timingOk && r.drainedOk && r.inputUnchanged;
+    if (!ok) allPassed = false;
+    console.log(`${r.name.padEnd(14)} capacity=${r.capacityOk} accounting=${r.accountingOk} timing=${r.timingOk} drained=${r.drainedOk} inputUnchanged=${r.inputUnchanged}  ${ok ? '✅ PASS' : '❌ FAIL'}`);
   }
 
   console.log(`\nOverall: ${allPassed ? '✅ All schedulers passed both invariants on this data.' : '❌ Something is wrong - investigate before trusting these results.'}`);

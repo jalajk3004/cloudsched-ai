@@ -1,0 +1,145 @@
+{
+  "servers": [
+    {
+      "id": "s1",
+      "cpuCapacity": 16,
+      "memCapacity": 32768
+    },
+    {
+      "id": "s2",
+      "cpuCapacity": 16,
+      "memCapacity": 32768
+    },
+    {
+      "id": "s3",
+      "cpuCapacity": 8,
+      "memCapacity": 16384
+    },
+    {
+      "id": "s4",
+      "cpuCapacity": 8,
+      "memCapacity": 16384
+    }
+  ],
+  "workload": {
+    "taskCount": 100,
+    "cpuRange": [
+      1,
+      8
+    ],
+    "memRange": [
+      512,
+      8192
+    ],
+    "durationRange": [
+      2,
+      20
+    ],
+    "simulationDuration": 100
+  },
+  "objective": {
+    "weights": {
+      "completion": 0.3,
+      "avgWait": 0.25,
+      "turnaround": 0.15,
+      "cpuUtilization": 0.15,
+      "memUtilization": 0.15
+    },
+    "scales": {
+      "avgWaitTicks": 20,
+      "turnaroundTicks": 30
+    }
+  },
+  "seedNamespaces": {
+    "training": "train-extra-*",
+    "validation": "val-*",
+    "final": "*-full-comparison-run*"
+  },
+  "seedManifest": {
+    "trainingExtra": [
+      "train-extra-balanced-0",
+      "train-extra-balanced-1"
+    ],
+    "validation": [
+      "val-balanced-0",
+      "val-balanced-1",
+      "val-balanced-2",
+      "val-balanced-3",
+      "val-balanced-4",
+      "val-balanced-5",
+      "val-balanced-6",
+      "val-balanced-7",
+      "val-balanced-8",
+      "val-balanced-9",
+      "val-balanced-10",
+      "val-balanced-11",
+      "val-balanced-12",
+      "val-balanced-13",
+      "val-balanced-14",
+      "val-balanced-15",
+      "val-balanced-16",
+      "val-balanced-17",
+      "val-balanced-18",
+      "val-balanced-19"
+    ],
+    "final": [
+      "balanced-full-comparison-run0",
+      "balanced-full-comparison-run1",
+      "balanced-full-comparison-run2",
+      "balanced-full-comparison-run3",
+      "balanced-full-comparison-run4",
+      "balanced-full-comparison-run5",
+      "balanced-full-comparison-run6",
+      "balanced-full-comparison-run7",
+      "balanced-full-comparison-run8",
+      "balanced-full-comparison-run9"
+    ]
+  },
+  "scenario": "balanced",
+  "repeats": 10,
+  "provider": "qwen",
+  "policy": {
+    "policyName": "cpuHeavyBalanced",
+    "hypothesis": "For CPU-heavy workloads with balanced clusters, a policy that prioritizes servers with high CPU packing efficiency while balancing memory fragmentation and future capacity will reduce wait times and improve P95 completion",
+    "weights": {},
+    "rejectIfNoServerFits": true,
+    "tieBreak": "lowest_server_index",
+    "expressions": {
+      "placementScore": {
+        "type": "arithmetic",
+        "op": "multiply",
+        "left": {
+          "type": "feature",
+          "name": "cpuFit"
+        },
+        "right": {
+          "type": "arithmetic",
+          "op": "multiply",
+          "left": {
+            "type": "feature",
+            "name": "futureCapacity"
+          },
+          "right": {
+            "type": "feature",
+            "name": "resourceBalance"
+          }
+        }
+      },
+      "taskOrderingScore": {
+        "type": "arithmetic",
+        "op": "add",
+        "left": {
+          "type": "feature",
+          "name": "priority"
+        },
+        "right": {
+          "type": "feature",
+          "name": "taskWaitTime"
+        }
+      }
+    }
+  },
+  "usedBestFitFallback": false,
+  "trainingWorkloadCount": 3,
+  "validationWorkloadCount": 20
+}

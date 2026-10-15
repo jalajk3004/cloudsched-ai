@@ -1,4 +1,4 @@
-import { Task, Server, Scheduler, SchedulingDecision } from '../domain/types';
+import { Task, Server, Scheduler, SchedulingDecision, TaskView, ServerView } from '../domain/types';
 
 export interface ServerConfig {
   id: string;
@@ -14,75 +14,106 @@ export interface TickSnapshot {
 
 export interface SimulationResult {
   schedulerName: string;
-  totalTicks: number;
-  tasks: Task[];              // final state of every task (completed/rejected/etc.)
-  history: TickSnapshot[];    // per-tick server utilization + placement log
+  totalTicks: number;     // ticks actually simulated (arrival window + drain)
+  arrivalWindow: number;  // ticks during which tasks may arrive
+  drained: boolean;       // true = every task reached a final outcome before the hard limit
+  tasks: Task[];          // final state of every task
+  history: TickSnapshot[];
 }
 
-/**
- * Runs one full simulation of `tasks` against `serverConfigs` using
- * `scheduler`, for `simulationDuration` ticks (or until all tasks resolve,
- * whichever is longer — capped by simulationDuration as a hard stop so a
- * run can never hang).
- *
- * This function is scheduler-agnostic by construction: it only ever calls
- * `scheduler.schedule(...)` through the common interface, and independently
- * re-validates every returned decision against live resource state before
- * committing it. No scheduler — baseline or AI — can force an invalid
- * placement or read tasks that haven't arrived yet.
- */
+export interface SimulationOptions {
+  /** Max extra ticks after the arrival window for queued/running tasks to finish. Default: max(1000, 10 x window). */
+  drainLimitTicks?: number;
+}
+
+const MAX_REASONABLE_TICKS = 200_000;
+
+/** Rejects invalid configurations immediately, with every problem listed. */
+export function validateSimulationInput(serverConfigs: ServerConfig[], tasks: Task[], simulationDuration: number): void {
+  const errors: string[] = [];
+  const posFinite = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x) && x > 0;
+
+  if (!Number.isInteger(simulationDuration) || simulationDuration <= 0) {
+    errors.push(`simulationDuration must be a positive integer (got ${simulationDuration})`);
+  }
+  if (serverConfigs.length === 0) errors.push('at least one server is required');
+
+  const serverIds = new Set<string>();
+  for (const s of serverConfigs) {
+    if (typeof s.id !== 'string' || s.id === '') errors.push('server id must be a non-empty string');
+    else if (serverIds.has(s.id)) errors.push(`duplicate server id "${s.id}"`);
+    serverIds.add(s.id);
+    if (!posFinite(s.cpuCapacity)) errors.push(`server "${s.id}": cpuCapacity must be a positive finite number`);
+    if (!posFinite(s.memCapacity)) errors.push(`server "${s.id}": memCapacity must be a positive finite number`);
+  }
+
+  const taskIds = new Set<string>();
+  for (const t of tasks) {
+    if (typeof t.id !== 'string' || t.id === '') errors.push('task id must be a non-empty string');
+    else if (taskIds.has(t.id)) errors.push(`duplicate task id "${t.id}"`);
+    taskIds.add(t.id);
+    if (!posFinite(t.cpuRequired)) errors.push(`task "${t.id}": cpuRequired must be a positive finite number`);
+    if (!posFinite(t.memRequired)) errors.push(`task "${t.id}": memRequired must be a positive finite number`);
+    if (!Number.isInteger(t.duration) || t.duration < 1) errors.push(`task "${t.id}": duration must be an integer >= 1 (got ${t.duration})`);
+    if (!Number.isInteger(t.arrivalTime) || t.arrivalTime < 0) errors.push(`task "${t.id}": arrivalTime must be an integer >= 0 (got ${t.arrivalTime})`);
+    if (t.priority !== 1 && t.priority !== 2 && t.priority !== 3) errors.push(`task "${t.id}": priority must be 1, 2 or 3 (got ${t.priority})`);
+  }
+
+  if (errors.length > 0) {
+    const shown = errors.slice(0, 10).map(e => `  - ${e}`).join('\n');
+    throw new Error(`Invalid simulation input (${errors.length} problem(s)):\n${shown}${errors.length > 10 ? '\n  ...' : ''}`);
+  }
+}
+
 export function runSimulation(
   scheduler: Scheduler,
   serverConfigs: ServerConfig[],
-  taskQueue: Task[], // full generated workload, with arrivalTime already assigned
+  taskQueue: Task[],
   simulationDuration: number,
+  options: SimulationOptions = {},
 ): SimulationResult {
+  validateSimulationInput(serverConfigs, taskQueue, simulationDuration);
+
   const servers: Server[] = serverConfigs.map(c => ({
-    id: c.id,
-    cpuCapacity: c.cpuCapacity,
-    memCapacity: c.memCapacity,
-    cpuUsed: 0,
-    memUsed: 0,
-    runningTaskIds: [],
+    id: c.id, cpuCapacity: c.cpuCapacity, memCapacity: c.memCapacity, cpuUsed: 0, memUsed: 0, runningTaskIds: [],
   }));
 
-  // Deep-copy tasks so repeated runs (different schedulers) never share mutable state.
-  const tasks: Task[] = taskQueue.map(t => ({ ...t, status: 'pending' as const }));
+  // Fresh runtime state: copy ONLY the workload fields, so no stale startTime/finishTime/assignedServerId can leak in.
+  const tasks: Task[] = taskQueue.map(t => ({
+    id: t.id, cpuRequired: t.cpuRequired, memRequired: t.memRequired, duration: t.duration,
+    arrivalTime: t.arrivalTime, priority: t.priority, status: 'pending' as const,
+  }));
   const taskById = new Map(tasks.map(t => [t.id, t]));
 
-  // Bucket tasks by arrival tick ONCE up front, instead of scanning the
-  // entire task list on every single tick. For a large task list run
-  // over a wide tick range, the old approach (O(tasks) work per tick)
-  // could balloon into billions of operations - this makes it O(tasks)
-  // total, regardless of how many ticks the simulation runs for.
+  // Static feasibility: a task that fits no server even when empty can never run -> permanent rejection.
+  const isFeasible = (t: Task) => servers.some(s => t.cpuRequired <= s.cpuCapacity && t.memRequired <= s.memCapacity);
   const tasksByArrivalTick = new Map<number, Task[]>();
+  let lastArrival = 0;
   for (const task of tasks) {
+    if (!isFeasible(task)) { task.status = 'rejected'; task.rejectionReason = 'infeasible'; continue; }
+    lastArrival = Math.max(lastArrival, task.arrivalTime);
     const bucket = tasksByArrivalTick.get(task.arrivalTime);
-    if (bucket) bucket.push(task);
-    else tasksByArrivalTick.set(task.arrivalTime, [task]);
+    if (bucket) bucket.push(task); else tasksByArrivalTick.set(task.arrivalTime, [task]);
   }
 
-  let pendingIds = new Set<string>(); // tasks currently visible & unplaced
-  const history: TickSnapshot[] = [];
-
-  const lastArrival = Math.max(0, ...tasks.map(t => t.arrivalTime));
-  const maxTick = Math.max(simulationDuration, lastArrival + 1);
-
-  // Safety guard: a bad unit-conversion assumption upstream (e.g. treating
-  // a raw dataset's time column as the wrong unit) can turn into an
-  // astronomical tick count, which would otherwise silently try to
-  // allocate a history entry per tick until the process runs out of
-  // memory. Fail fast with a clear message instead.
-  const MAX_REASONABLE_TICKS = 200_000;
-  if (maxTick > MAX_REASONABLE_TICKS) {
+  const arrivalWindow = Math.max(simulationDuration, lastArrival + 1);
+  if (arrivalWindow > MAX_REASONABLE_TICKS) {
     throw new Error(
-      `Simulation would run for ${maxTick} ticks, which exceeds the safety limit of ${MAX_REASONABLE_TICKS}. ` +
-      `This usually means a task's arrivalTime is far larger than expected - check the time-unit conversion ` +
-      `in whichever workload source produced these tasks (e.g. ticksPerSecond/ticksPerDay in the data adapter).`,
+      `Arrival window of ${arrivalWindow} ticks exceeds the safety limit of ${MAX_REASONABLE_TICKS}. ` +
+      `Check the time-unit conversion in the workload source (e.g. ticksPerSecond/ticksPerDay).`,
     );
   }
+  const drainLimit = options.drainLimitTicks ?? Math.max(1000, 10 * arrivalWindow);
+  const hardLimit = Math.min(arrivalWindow + drainLimit, MAX_REASONABLE_TICKS);
 
-  for (let t = 0; t < maxTick; t++) {
+  const pendingIds = new Set<string>();
+  const history: TickSnapshot[] = [];
+  let ticksRun = 0;
+  let drained = false;
+
+  for (let t = 0; t < hardLimit; t++) {
+    ticksRun = t + 1;
+
     // 1) free resources from tasks finishing at this tick
     for (const server of servers) {
       const stillRunning: string[] = [];
@@ -99,22 +130,20 @@ export function runSimulation(
       server.runningTaskIds = stillRunning;
     }
 
-    // 2) reveal newly-arrived tasks (fairness guard: never reveal the future)
+    // 2) reveal newly arrived (feasible) tasks; the future is never visible
     const arrivingNow = tasksByArrivalTick.get(t);
-    if (arrivingNow) {
-      for (const task of arrivingNow) {
-        if (task.status === 'pending') pendingIds.add(task.id);
-      }
+    if (arrivingNow) for (const task of arrivingNow) pendingIds.add(task.id);
+
+    // 3) ask the scheduler, giving it FROZEN snapshots, never the engine's live objects
+    let decisions: SchedulingDecision[] = [];
+    if (pendingIds.size > 0) {
+      const pendingView = [...pendingIds].map(id => Object.freeze({ ...taskById.get(id)! })) as unknown as ReadonlyArray<TaskView>;
+      const serverView = servers.map(s =>
+        Object.freeze({ ...s, runningTaskIds: Object.freeze([...s.runningTaskIds]) })) as unknown as ReadonlyArray<ServerView>;
+      decisions = scheduler.schedule(pendingView, serverView, t);
     }
 
-    const pendingTasks = [...pendingIds].map(id => taskById.get(id)!);
-
-    // 3) ask the scheduler — it only sees current pending tasks + current server state
-    const decisions: SchedulingDecision[] = pendingTasks.length
-      ? scheduler.schedule(pendingTasks, servers, t)
-      : [];
-
-    // 4) apply decisions — engine independently re-validates every one
+    // 4) apply decisions; the engine independently re-validates every one
     const placementLog: TickSnapshot['placements'] = [];
     for (const d of decisions) {
       if (d.serverId === null) {
@@ -127,11 +156,9 @@ export function runSimulation(
         placementLog.push({ taskId: d.taskId, serverId: d.serverId, accepted: false });
         continue;
       }
-
-      const cpuFree = server.cpuCapacity - server.cpuUsed;
-      const memFree = server.memCapacity - server.memUsed;
-      const valid = task.cpuRequired <= cpuFree && task.memRequired <= memFree;
-
+      const valid =
+        task.cpuRequired <= server.cpuCapacity - server.cpuUsed &&
+        task.memRequired <= server.memCapacity - server.memUsed;
       if (valid) {
         server.cpuUsed += task.cpuRequired;
         server.memUsed += task.memRequired;
@@ -147,18 +174,21 @@ export function runSimulation(
 
     history.push({
       tick: t,
-      servers: servers.map(s => ({
-        id: s.id, cpuUsed: s.cpuUsed, memUsed: s.memUsed,
-        cpuCapacity: s.cpuCapacity, memCapacity: s.memCapacity,
-      })),
+      servers: servers.map(s => ({ id: s.id, cpuUsed: s.cpuUsed, memUsed: s.memUsed, cpuCapacity: s.cpuCapacity, memCapacity: s.memCapacity })),
       placements: placementLog,
     });
+
+    // 5) done when every arrival has been revealed and nothing is queued or running
+    if (t >= lastArrival && pendingIds.size === 0 && servers.every(s => s.runningTaskIds.length === 0)) {
+      drained = true;
+      break;
+    }
   }
 
-  // anything still pending when the simulation ends is officially rejected
-  for (const id of pendingIds) {
-    taskById.get(id)!.status = 'rejected';
+  // Anything not finished at the hard limit is UNRESOLVED, never silently counted as a success.
+  for (const task of tasks) {
+    if (task.status === 'pending' || task.status === 'running') task.status = 'unresolved';
   }
 
-  return { schedulerName: scheduler.name, totalTicks: maxTick, tasks, history };
+  return { schedulerName: scheduler.name, totalTicks: ticksRun, arrivalWindow, drained, tasks, history };
 }

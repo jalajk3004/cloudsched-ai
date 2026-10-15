@@ -1,114 +1,218 @@
-import { LLMProvider, PolicyPromptContext, PolicyProposal, ALLOWED_POLICY_FEATURES } from '../llm-provider';
+import {
+  LLMProvider,
+  PolicyPromptContext,
+  PolicyProposal,
+  ALLOWED_POLICY_FEATURES,
+  FEATURE_DESCRIPTIONS,
+} from '../llm-provider';
 
-/**
- * ============================================================
- *  MODEL: Qwen3, run locally via Ollama (default tag: qwen3:4b)
- * ============================================================
- *
- * This talks to a local Ollama server running on this machine over plain HTTP.
- * No external API key is needed.
- *
- * SETUP (done once, outside this code):
- *   1. Install Ollama from https://ollama.com
- *   2. Run: ollama pull qwen3:4b
- *   3. Confirm it works: ollama run qwen3:4b
- * Ollama runs as a local background service on http://localhost:11434
- * by default - nothing in this file needs an internet connection once
- * the model has been pulled.
- */
 export class QwenProvider implements LLMProvider {
+  private calls = 0;
   readonly name = 'qwen';
 
   constructor(
-    private host: string = process.env.OLLAMA_HOST || 'http://localhost:11434',
-    private model: string = process.env.OLLAMA_MODEL || 'qwen3:4b',
+    private host: string =
+      process.env.OLLAMA_HOST || 'http://127.0.0.1:11434',
+    private model: string =
+      process.env.OLLAMA_MODEL || 'qwen3:4b',
   ) { }
 
-  async proposePolicy(context: PolicyPromptContext): Promise<PolicyProposal> {
+  async proposePolicy(
+    context: PolicyPromptContext,
+  ): Promise<PolicyProposal> {
     const prompt = buildPrompt(context);
+    const seedBase = Number(process.env.QWEN_SEED ?? 42);
+    const seed = Number.isFinite(seedBase) ? seedBase + this.calls : 42 + this.calls;
+    this.calls += 1;
 
-    let response: Response;
-    try {
-      response = await fetch(`${this.host}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: prompt },
-          ],
-          format: 'json', // Ollama's native JSON-mode flag
-          stream: false,
-        }),
-      });
-    } catch (err) {
+    const response = await fetch(`${this.host.replace(/\/+$/, '')}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(600_000),
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        format: 'json',
+        stream: false,
+        think: false,
+        options: {
+          temperature: 0.9,
+          seed,
+          num_ctx: 8192,
+        },
+      }),
+    });
+
+    const body = await response.text();
+
+    if (!response.ok) {
       throw new Error(
-        `[QwenProvider] Could not reach Ollama at ${this.host}. Is Ollama running? ` +
-        `(Original error: ${(err as Error).message})`,
+        `[QwenProvider] HTTP ${response.status}: ${body.slice(0, 500)}`,
       );
     }
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(`[QwenProvider] Ollama returned HTTP ${response.status}: ${text.slice(0, 200)}`);
+    if (!body.trim()) {
+      throw new Error('[QwenProvider] Ollama returned an empty response');
     }
 
-    const data = await response.json() as { message?: { content?: string } };
-    const raw = data.message?.content;
-    if (!raw) {
-      throw new Error('[QwenProvider] Empty response from Ollama.');
-    }
+    let envelope: {
+      message?: { content?: string };
+      done?: boolean;
+      done_reason?: string;
+      error?: string;
+    };
 
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(raw);
+      envelope = JSON.parse(body);
     } catch {
-      throw new Error(`[QwenProvider] Model did not return valid JSON: ${raw.slice(0, 200)}`);
+      throw new Error(
+        `[QwenProvider] Invalid Ollama response envelope ` +
+        `(length=${body.length}): ${body.slice(0, 500)}`,
+      );
     }
 
-    return parsed as PolicyProposal;
+    if (envelope.error) {
+      throw new Error(`[QwenProvider] Ollama error: ${envelope.error}`);
+    }
+
+    const raw = envelope.message?.content?.trim();
+
+    if (!raw) {
+      throw new Error(
+        `[QwenProvider] Missing message.content; ` +
+        `done=${envelope.done}, reason=${envelope.done_reason ?? 'unknown'}`,
+      );
+    }
+
+    try {
+      // Do not silently repair invalid model output.
+      return JSON.parse(
+        raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim(),
+      ) as PolicyProposal;
+    } catch {
+      throw new Error(
+        `[QwenProvider] Model returned invalid JSON ` +
+        `(length=${raw.length}, done=${envelope.done}, ` +
+        `reason=${envelope.done_reason ?? 'unknown'}): ` +
+        raw.slice(0, 500),
+      );
+    }
   }
 }
 
-// Prompt instructions to constrain model output to valid PolicyProposal JSON.
-const SYSTEM_PROMPT = `You are designing a scheduling policy for a cloud task scheduler.
-Your job is to propose a set of WEIGHTS over a fixed list of features. You do not write code
-and you do not control anything else - only these weights.
-
-You must respond with ONLY a JSON object in exactly this shape, nothing else:
-{
-  "policyName": "<a short descriptive name for this attempt>",
-  "weights": {
-    "<featureName>": <number between -1 and 1>,
-    ...
-  },
-  "rejectIfNoServerFits": true,
-  "tieBreak": "lowest_server_index"
+function featureMeanings(): string {
+  return ALLOWED_POLICY_FEATURES
+    .map(feature => `- ${feature}: ${FEATURE_DESCRIPTIONS[feature]}`)
+    .join('\n');
 }
 
-Rules:
-- "weights" keys MUST come only from this allowed list: ${ALLOWED_POLICY_FEATURES.join(', ')}
-- You do not need to use every feature - only include the ones you want to weight.
-- Every weight value MUST be a number between -1 and 1 (inclusive).
-- "tieBreak" MUST be exactly "lowest_server_index" or "highest_server_index".
-- Return ONLY the JSON object. No explanation, no markdown, no code fences.`;
+const SYSTEM_PROMPT = `
+You design new scheduling policies for a deterministic cloud scheduler.
+
+Return exactly one JSON object and no Markdown.
+
+APPROVED FEATURES:
+${featureMeanings()}
+
+Use only the approved features above.
+
+Expression types:
+{"type":"constant","value":0.5}
+{"type":"feature","name":"cpuFit"}
+{"type":"arithmetic","op":"multiply","left":EXPR,"right":EXPR}
+{"type":"if","condition":CONDITION,"then":EXPR,"else":EXPR}
+
+Arithmetic operators: add, subtract, multiply, divide.
+Comparison operators: lt, lte, gt, gte, eq, neq.
+Boolean conditions:
+{"type":"boolean","op":"and","left":CONDITION,"right":CONDITION}
+{"type":"boolean","op":"or","left":CONDITION,"right":CONDITION}
+{"type":"not","value":CONDITION}
+
+Required JSON shape:
+{
+  "policyName": "descriptive-name",
+  "hypothesis": "A testable scheduling hypothesis",
+  "weights": {},
+  "rejectIfNoServerFits": true,
+  "tieBreak": "lowest_server_index",
+  "expressions": {
+    "placementScore": NUMERIC_EXPRESSION,
+    "taskOrderingScore": NUMERIC_EXPRESSION
+  }
+}
+
+Higher placementScore means a server is preferred.
+Higher taskOrderingScore means a task is scheduled earlier.
+
+Generate expression-based policies only. Keep weights empty.
+Do not select or copy a predefined baseline.
+Do not merely rename a previous policy.
+Do not claim an improvement before evaluation.
+The simulator enforces resource feasibility.
+`;
 
 function buildPrompt(context: PolicyPromptContext): string {
-  const historyText = context.pastAttempts.length === 0
-    ? 'This is the first attempt - no history yet.'
-    : context.pastAttempts
-      .map((a, i) => `Attempt ${i + 1}: policy=${JSON.stringify(a.policy)} -> score=${a.overallScore.toFixed(3)}`)
-      .join('\n');
+  const attempts = context.pastAttempts.length
+    ? context.pastAttempts.map((attempt, index) => {
+      const score = attempt.overallScore === null
+        ? 'not evaluated'
+        : attempt.overallScore.toFixed(4);
 
-  return `Scenario: ${context.scenario}
-Servers available: ${context.serverCountSummary}
-Sample workload: ${context.sampleWorkloadSummary}
-Allowed features: ${context.allowedFeatures.join(', ')}
+      return [
+        `ATTEMPT ${index + 1}`,
+        `Score: ${score}`,
+        `Outcome: ${attempt.summary}`,
+        `Policy: ${JSON.stringify(attempt.policy)}`,
+      ].join('\n');
+    }).join('\n\n')
+    : 'No previous attempts.';
 
-Past attempts and their scores (higher score is better):
-${historyText}
+  return `
+SCENARIO
+${context.scenario}
 
-Propose a new policy. If past attempts exist, try to improve on the best score so far
-by adjusting the weights - don't just repeat the same policy.`;
+SERVERS
+${context.serverCountSummary}
+
+WORKLOAD
+${context.sampleWorkloadSummary}
+
+WORKLOAD PROFILE
+${context.workloadProfile}
+
+BASELINE RESULTS
+${context.baselineSummary}
+
+PREVIOUS ATTEMPTS — STUDY THESE BEFORE GENERATING
+${attempts}
+
+DIAGNOSIS
+${context.diagnosis}
+
+GENERATION RULES
+${context.strategyMenu}
+
+Approved feature names:
+${context.allowedFeatures.join(', ')}
+
+Your task:
+1. Identify a measurable scheduling trade-off in the results.
+2. Examine every previous formula shown above.
+3. Do not repeat an earlier formula or merely change its name.
+4. If an attempt was rejected as a duplicate, change the actual
+   expression tree, not its name, hypothesis, or JSON key ordering.
+5. If a policy was evaluated, use its metric results to guide the
+   next hypothesis. Do not assume a lower score is an improvement.
+6. Generate one new placementScore and taskOrderingScore.
+7. Prefer a meaningfully different formula using the approved
+   features, arithmetic, and conditionals. Do not add random constants
+   solely to evade structural duplicate detection.
+8. Return only the required JSON object.
+
+The simulator, not you, determines whether the policy performs better.
+`;
 }

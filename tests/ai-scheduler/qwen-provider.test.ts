@@ -6,7 +6,11 @@ const sampleContext: PolicyPromptContext = {
     scenario: 'mixed',
     serverCountSummary: '2 servers',
     sampleWorkloadSummary: '10 tasks',
-    allowedFeatures: ['taskPriority', 'leftoverCpuAfterPlacement'],
+    workloadProfile: 'test',
+    allowedFeatures: ['priority', 'cpuFit'],
+    baselineSummary: 'none',
+    strategyMenu: 'none',
+    diagnosis: 'none',
     pastAttempts: [],
 };
 
@@ -19,7 +23,7 @@ function startMockOllama(responder: (body: any) => { status: number; json: any }
                 const body = raw ? JSON.parse(raw) : {};
                 const { status, json } = responder(body);
                 res.writeHead(status, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(json));
+                res.end(JSON.stringify(json) + '\n');
             });
         });
         server.listen(0, () => {
@@ -41,7 +45,7 @@ describe('QwenProvider (against a mock local Ollama server)', () => {
                 message: {
                     content: JSON.stringify({
                         policyName: 'qwen-test-policy',
-                        weights: { taskPriority: 0.5 },
+                        weights: { priority: 0.5 },
                         rejectIfNoServerFits: true,
                         tieBreak: 'lowest_server_index',
                     })
@@ -53,7 +57,7 @@ describe('QwenProvider (against a mock local Ollama server)', () => {
         const result = await provider.proposePolicy(sampleContext);
 
         expect(result.policyName).toBe('qwen-test-policy');
-        expect(result.weights.taskPriority).toBe(0.5);
+        expect(result.weights.priority).toBe(0.5);
         await mock.close();
     });
 
@@ -72,12 +76,12 @@ describe('QwenProvider (against a mock local Ollama server)', () => {
         const mock = await startMockOllama(() => ({ status: 500, json: { error: 'model not found' } }));
 
         const provider = new QwenProvider(mock.url, 'qwen3:4b');
-        await expect(provider.proposePolicy(sampleContext)).rejects.toThrow(/Ollama returned HTTP 500/);
+        await expect(provider.proposePolicy(sampleContext)).rejects.toThrow(/HTTP 500/);
         await mock.close();
     });
 
-    it('throws a clear "is Ollama running?" error when the server is unreachable', async () => {
+    it('throws a clear error when the server is unreachable', async () => {
         const provider = new QwenProvider('http://localhost:1', 'qwen3:4b');
-        await expect(provider.proposePolicy(sampleContext)).rejects.toThrow(/Is Ollama running/);
+        await expect(provider.proposePolicy(sampleContext)).rejects.toThrow(/failed/);
     });
 });

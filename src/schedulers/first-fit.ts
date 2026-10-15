@@ -1,4 +1,4 @@
-import { Scheduler, Task, Server, SchedulingDecision, fits } from '../domain/types';
+import { Scheduler, TaskView, ServerView, SchedulingDecision, fits } from '../domain/types';
 
 /**
  * First-Fit: for each pending task (in arrival order), scan servers in
@@ -13,8 +13,8 @@ export class FirstFitScheduler implements Scheduler {
   readonly name = 'first-fit';
 
   schedule(
-    pendingTasks: ReadonlyArray<Task>,
-    servers: ReadonlyArray<Server>,
+    pendingTasks: ReadonlyArray<TaskView>,
+    servers: ReadonlyArray<ServerView>,
     _currentTick: number,
   ): SchedulingDecision[] {
     // local working copy of free capacity so we don't overbook within one tick

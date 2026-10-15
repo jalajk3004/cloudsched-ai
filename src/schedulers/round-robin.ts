@@ -1,4 +1,4 @@
-import { Scheduler, Task, Server, SchedulingDecision } from '../domain/types';
+import { Scheduler, TaskView, ServerView, SchedulingDecision } from '../domain/types';
 
 /**
  * Round-Robin: keeps a rotating pointer across servers (persists across
@@ -12,8 +12,8 @@ export class RoundRobinScheduler implements Scheduler {
   private pointer = 0;
 
   schedule(
-    pendingTasks: ReadonlyArray<Task>,
-    servers: ReadonlyArray<Server>,
+    pendingTasks: ReadonlyArray<TaskView>,
+    servers: ReadonlyArray<ServerView>,
     _currentTick: number,
   ): SchedulingDecision[] {
     if (servers.length === 0) return pendingTasks.map(t => ({ taskId: t.id, serverId: null }));

@@ -1,23 +1,23 @@
 // ── Core domain model ────────────────────────────────────────────────────
-// This file is the single source of truth for shapes used across every
-// scheduler (baseline or AI), the engine, and the metrics module.
-
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'rejected';
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'rejected' | 'unresolved';
+// 'rejected'   = permanently infeasible: fits on NO server even when that server is empty (see rejectionReason)
+// 'unresolved' = still pending or running when the hard simulation limit was reached
 export type Priority = 1 | 2 | 3; // 1 = low, 2 = medium, 3 = high
 
 export interface Task {
   id: string;
-  cpuRequired: number;   // abstract CPU units
-  memRequired: number;   // abstract MB units
+  cpuRequired: number;
+  memRequired: number;
   duration: number;      // ticks needed to run once started
   arrivalTime: number;   // simulated tick at which the task becomes visible
   priority: Priority;
 
-  // Set by the engine only. Schedulers must never write these.
+  // Set by the engine only. Schedulers can never write these.
   status: TaskStatus;
   startTime?: number;
   finishTime?: number;
   assignedServerId?: string;
+  rejectionReason?: 'infeasible';
 }
 
 export interface Server {
@@ -29,29 +29,28 @@ export interface Server {
   runningTaskIds: string[];
 }
 
+/** What a scheduler is allowed to see: frozen snapshots, never the engine's live objects. */
+export type TaskView = Readonly<Task>;
+export type ServerView = Readonly<Omit<Server, 'runningTaskIds'>> & { readonly runningTaskIds: ReadonlyArray<string> };
+
 export interface SchedulingDecision {
   taskId: string;
-  // null = "no placement this tick" (defer/reject-for-now).
-  // The task stays pending and will be offered again next tick.
-  serverId: string | null;
+  serverId: string | null; // null = "no placement this tick"; the task stays pending
 }
 
 export interface Scheduler {
   readonly name: string;
   schedule(
-    pendingTasks: ReadonlyArray<Task>,
-    servers: ReadonlyArray<Server>,
+    pendingTasks: ReadonlyArray<TaskView>,
+    servers: ReadonlyArray<ServerView>,
     currentTick: number,
   ): SchedulingDecision[];
 }
 
-// Helper: pure function, no mutation — used by baselines & engine alike.
-export function freeCpu(server: Server): number {
-  return server.cpuCapacity - server.cpuUsed;
-}
-export function freeMem(server: Server): number {
-  return server.memCapacity - server.memUsed;
-}
-export function fits(server: Server, task: Task): boolean {
+type HasCpu = Pick<Server, 'cpuCapacity' | 'cpuUsed'>;
+type HasMem = Pick<Server, 'memCapacity' | 'memUsed'>;
+export function freeCpu(server: HasCpu): number { return server.cpuCapacity - server.cpuUsed; }
+export function freeMem(server: HasMem): number { return server.memCapacity - server.memUsed; }
+export function fits(server: HasCpu & HasMem, task: Pick<Task, 'cpuRequired' | 'memRequired'>): boolean {
   return freeCpu(server) >= task.cpuRequired && freeMem(server) >= task.memRequired;
 }
